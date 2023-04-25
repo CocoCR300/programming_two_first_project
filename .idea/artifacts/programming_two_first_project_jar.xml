@@ -1,0 +1,16 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="programming_two_first_project:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/programming_two_first_project_jar</output-path>
+    <root id="archive" name="programming_two_first_project.jar">
+      <element id="module-output" name="programming_two_first_project" />
+      <element id="extracted-dir" path="$MAVEN_REPOSITORY$/org/jetbrains/annotations/24.0.1/annotations-24.0.1.jar" path-in-jar="/" />
+      <element id="extracted-dir" path="$MAVEN_REPOSITORY$/org/springframework/boot/spring-boot/3.0.6/spring-boot-3.0.6.jar" path-in-jar="/" />
+      <element id="extracted-dir" path="$MAVEN_REPOSITORY$/org/springframework/spring-beans/6.0.8/spring-beans-6.0.8.jar" path-in-jar="/" />
+      <element id="extracted-dir" path="$MAVEN_REPOSITORY$/org/springframework/spring-context/6.0.8/spring-context-6.0.8.jar" path-in-jar="/" />
+      <element id="extracted-dir" path="$MAVEN_REPOSITORY$/org/springframework/spring-expression/6.0.8/spring-expression-6.0.8.jar" path-in-jar="/" />
+      <element id="extracted-dir" path="$MAVEN_REPOSITORY$/org/springframework/spring-core/6.0.8/spring-core-6.0.8.jar" path-in-jar="/" />
+      <element id="extracted-dir" path="$MAVEN_REPOSITORY$/org/springframework/spring-aop/6.0.8/spring-aop-6.0.8.jar" path-in-jar="/" />
+      <element id="extracted-dir" path="$MAVEN_REPOSITORY$/org/springframework/spring-jcl/6.0.8/spring-jcl-6.0.8.jar" path-in-jar="/" />
+    </root>
+  </artifact>
+</component>
