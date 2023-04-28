@@ -17,4 +17,16 @@ public class OptionMapGenerator {
 
         return optionMap;
     }
+
+    @SafeVarargs
+    public static <T extends Option> Map<String, T> generateMap(T... options) {
+        Map<String, T> optionMap = new HashMap<>(options.length);
+
+        for (T option : options) {
+            optionMap.put(option.name, option);
+            optionMap.put(option.shortName, option);
+        }
+
+        return optionMap;
+    }
 }

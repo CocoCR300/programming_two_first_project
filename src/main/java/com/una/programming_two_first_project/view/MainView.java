@@ -11,7 +11,7 @@ public class MainView {
         _controller = controller;
     }
 
-    public void printMenu() {
-
+    public String sendArgs(String[] args) {
+        return _controller.resolveArgs(args);
     }
 }

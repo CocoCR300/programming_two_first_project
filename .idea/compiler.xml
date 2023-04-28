@@ -10,4 +10,9 @@
       </profile>
     </annotationProcessing>
   </component>
+  <component name="JavacSettings">
+    <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="programming_two_first_project" options="-parameters -parameters" />
+    </option>
+  </component>
 </project>

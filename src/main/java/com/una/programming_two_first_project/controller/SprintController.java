@@ -30,7 +30,7 @@ public class SprintController implements ArgsCapableController
     }
 
     @Override
-    public String getHelp() {
+    public String getHelp(String optionName) {
         return null;
     }
 

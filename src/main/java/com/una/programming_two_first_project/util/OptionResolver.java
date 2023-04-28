@@ -4,28 +4,27 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public class OptionResolver {
-    public static @NotNull String extractOptionName(String optionArg) {
-        String optionName = "";
-
+    public static @NotNull Map.Entry<Boolean, String> extractOptionName(String optionArg) {
         if (optionArg.startsWith("--")) {
-            optionName = optionArg.substring(2);
+            return Map.entry(true, optionArg.substring(2));
         } else if (optionArg.startsWith("-")) {
-            optionName = optionArg.substring(1);
+            return Map.entry(true, optionArg.substring(1));
         }
 
-        return optionName;
+        return Map.entry(false, "");
     }
 
     public static @NotNull String[] extractOptionNames(String[] args) {
         List<String> optionNames = new ArrayList<>();
 
         for (int i = 0; i < args.length; ++i) {
-            String optionName = extractOptionName(args[i]);
+            Map.Entry<Boolean, String> optionName = extractOptionName(args[i]);
 
-            if (!optionName.isEmpty()) {
-                optionNames.add(optionName);
+            if (!optionName.getKey()) {
+                optionNames.add(optionName.getValue());
             }
         }
 
