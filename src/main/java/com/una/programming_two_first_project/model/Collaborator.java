@@ -1,6 +1,6 @@
 package com.una.programming_two_first_project.model;
 
-public class Collaborator {
+public class Collaborator implements Model {
 
     public final boolean isActive;
     public final Department department;

@@ -1,10 +1,7 @@
 package com.una.programming_two_first_project.controller;
 
 
-import com.una.programming_two_first_project.model.ArgsCapableOption;
-import com.una.programming_two_first_project.model.ArgumentOption;
-import com.una.programming_two_first_project.model.Collaborator;
-import com.una.programming_two_first_project.model.Option;
+import com.una.programming_two_first_project.model.*;
 import com.una.programming_two_first_project.util.OptionMapGenerator;
 import com.una.programming_two_first_project.util.OptionResolver;
 import org.springframework.data.util.CastUtils;
@@ -19,16 +16,20 @@ import java.util.stream.Stream;
 
 public class CollaboratorController implements ArgsCapableController
 {
-    public final ArgsCapableOption AddOption = new ArgsCapableOption<String[]>("add", "a", "", this::add);
-    public final ArgsCapableOption HelpOption = new ArgsCapableOption<String>("help", "h", "", this::getHelp);
-    public final ArgumentOption IdOption = new ArgumentOption("id", "i", "", false);
-    public final ArgumentOption IsActiveOption = new ArgumentOption("isActive", "j", "", true);
-    public final ArgumentOption NameOption = new ArgumentOption("name", "n", "", false);
-    public final ArgumentOption LastNameOption = new ArgumentOption("lastName", "m", "", false);
+    public final ArgsCapableOption<String[]> AddOption = new ArgsCapableOption<>("add", "a", "", this::add);
+    public final ArgsCapableOption<String> HelpOption = new ArgsCapableOption<>("help", "h", "", this::getHelp);
+    public final ArgumentOption DepartmentOption = new ArgumentOption("department-id", "d", "", -1);
+    public final ArgumentOption EmailAddressOption = new ArgumentOption("email-address", "f", "", "");
+    public final ArgumentOption IdOption = new ArgumentOption("id", "i", "", -1);
+    public final ArgumentOption IsActiveOption = new SwitchArgumentOption("is-active", "j", "");
+    public final ArgumentOption NameOption = new ArgumentOption("name", "n", "", "");
+    public final ArgumentOption LastNameOption = new ArgumentOption("last-name", "m", "", "");
+    public final ArgumentOption TelephoneNumberOption = new ArgumentOption("telephone-number", "t", "", "");
 
-    private final List<Option> Options = List.of(AddOption, HelpOption);
-    private final Map<String, ArgumentOption> ArgumentOptionsMap = OptionMapGenerator.generateMap(IdOption, IsActiveOption, NameOption, LastNameOption);
-    private final Map<String, Option> OptionsMap = OptionMapGenerator.generateMap(Options);
+    private final List<ArgsCapableOption> Options = List.of(AddOption, HelpOption);
+    private final Map<String, ArgumentOption> ArgumentOptionsMap = OptionMapGenerator.generateMap(DepartmentOption,
+            EmailAddressOption, IdOption, IsActiveOption, NameOption, LastNameOption, TelephoneNumberOption);
+    private final Map<String, ArgsCapableOption> OptionsMap = OptionMapGenerator.generateMap(Options);
 
     public String add(String[] args) {
         return "";
@@ -47,31 +48,66 @@ public class CollaboratorController implements ArgsCapableController
 
             for (int i = 0; i < args.length; ++i) {
                 String arg = args[i];
+                Map.Entry<Boolean, String> optionResolverResult = OptionResolver.extractOptionName(arg);
 
-                if (OptionsMap.containsKey(arg)) {
-                    actionOption = (ArgsCapableOption) OptionsMap.get(arg);
-                } else if (ArgumentOptionsMap.containsKey(arg) || arg.contains("-")) {
-                    // TODO: Send argument options with the prefixes included, we need some way to identify them here,
-                    // and that seems to be the simplest way, at least is more reliable than looking for a single dash
-                    // on them
-                    StringBuilder builder = new StringBuilder(arg);
-                    int dashIndex = builder.indexOf("-");
-                    while (dashIndex != -1) {
-                        char charNextToDash = builder.charAt(dashIndex + 1);
-                        builder.replace(dashIndex, dashIndex + 2, String.valueOf(Character.toUpperCase(charNextToDash)));
-                        dashIndex = builder.indexOf("-");
+                if (optionResolverResult.getKey()) {
+                    String optionName = optionResolverResult.getValue();
+
+                    if (OptionsMap.containsKey(optionName)) {
+                        actionOption = OptionsMap.get(optionName);
+                    } else if (ArgumentOptionsMap.containsKey(optionName)) {
+                        ArgumentOption argumentOption = ArgumentOptionsMap.get(optionName);
+                        Object valueForArg;
+
+                        if (argumentOption instanceof SwitchArgumentOption) {
+                            valueForArg = true;
+                        } else if (i + 1 < args.length && !OptionResolver.extractOptionName(args[i + 1]).getKey()) {
+                            valueForArg = args[i + 1];
+                        } else {
+                            // Non-switch argument option must be followed by a value, there wasn't enough arguments or
+                            // the argument that followed the current one was an option, warn the user in this case.
+                            return String.format("Missing value for option %s.", arg);
+                        }
+
+                        argsByName.put(argumentOption.name, valueForArg);
+                    } else {
+                        return String.format("Invalid option: %s", arg);
                     }
-
-                    ArgumentOption argumentOption = ArgumentOptionsMap.get(builder.toString());
-                    argsByName.put(argumentOption.name, argumentOption.isSwitch ? true : args[i + 1]);
                 }
             }
 
             if (actionOption != null) {
+                @SuppressWarnings("unchecked") // Not going to change the array, see the API note for Class<T>.getConstructors()
                 Constructor<Collaborator> controllerConstructor = (Constructor<Collaborator>) Collaborator.class.getConstructors()[0];
-                Stream<String> constructorParameterNames = Arrays.stream(controllerConstructor.getParameters()).map(Parameter::getName);
+                Stream<Parameter> constructorParameters = Arrays.stream(controllerConstructor.getParameters());
 
-                Object[] argsForAction = constructorParameterNames.map(argsByName::get).toArray(Object[]::new);
+                Object[] argsForAction = constructorParameters.map(p -> {
+                    String constructorParameterName = p.getName();
+                    StringBuilder builder = new StringBuilder(constructorParameterName);
+
+                    for (int i = 0; i < builder.length(); ++i) {
+                        char currentChar = builder.charAt(i);
+                        if (Character.isUpperCase(currentChar)) {
+                            builder.replace(i, i + 1, String.valueOf(Character.toLowerCase(currentChar)));
+                            builder.insert(i, '-');
+                        }
+                    }
+
+                    if (Model.class.isAssignableFrom(p.getType())) {
+                        builder.append("-id");
+                    }
+
+                    String argumentOptionName = builder.toString();
+                    ArgumentOption argumentOption = ArgumentOptionsMap.get(argumentOptionName);
+                    Object valueForArg = argsByName.get(argumentOptionName);
+
+                    if (valueForArg == null) {
+                        // NOTE: Option for constructor parameter was not provided, so take default value
+                        return argumentOption.defaultValue;
+                    }
+
+                    return valueForArg;
+                }).toArray(Object[]::new);
                 actionOption.function.apply(argsForAction);
             }
 

@@ -5,7 +5,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.ArrayList;
 import java.util.List;
 
-public class Department {
+public class Department implements Model {
     public final List<Collaborator> collaborators;
     public final long id;
     public final String name;

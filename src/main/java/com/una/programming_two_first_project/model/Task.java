@@ -1,6 +1,6 @@
 package com.una.programming_two_first_project.model;
 
-public class Task {
+public class Task implements Model {
 
     public final long id;
     public final Sprint sprint;

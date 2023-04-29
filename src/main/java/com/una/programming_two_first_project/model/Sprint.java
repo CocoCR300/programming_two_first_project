@@ -4,7 +4,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.time.OffsetDateTime;
 
-public class Sprint {
+public class Sprint implements Model {
     public final OffsetDateTime endDateTime, startDateTime;
     public final Project project;
     public final String number, identifier;

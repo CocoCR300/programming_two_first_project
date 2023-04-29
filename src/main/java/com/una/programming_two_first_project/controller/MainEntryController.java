@@ -90,20 +90,23 @@ public class MainEntryController implements EntryController
 
                     if (option == HelpOption) {
                         helpOption = (ArgsCapableOption) option;
-                        argsForController.add(optionName);
+//                        argsForController.add(arg);
                     } else if (option != null) {
                         actionOption = option;
-                        argsForController.add(optionName);
+//                        argsForController.add(arg);
                     } else if (ControllerOptionsMap.containsKey(optionName)) {
                         controllerOption = ControllerOptionsMap.get(optionName);
+                        continue;
                     }
-                    else {
-                        argsForController.add(optionName);
+                    /* else {
+                        argsForController.add(arg);
 //                        return "Invalid option: " + arg;
-                    }
-                } else {
+                    } */
+                } /*else {
                     argsForController.add(arg);
-                }
+                } */
+
+                argsForController.add(arg);
             }
 
             if (actionOption != null) {
