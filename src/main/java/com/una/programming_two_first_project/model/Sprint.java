@@ -7,7 +7,7 @@ import java.time.OffsetDateTime;
 public class Sprint implements Model {
     public final OffsetDateTime endDateTime, startDateTime;
     public final Project project;
-    public final String number, identifier;
+    public final String id, number;
 
     public Sprint(Project project, @NotNull String number, @NotNull OffsetDateTime startDateTime,
                   @NotNull OffsetDateTime endDateTime) {
@@ -16,6 +16,11 @@ public class Sprint implements Model {
         this.endDateTime = endDateTime;
         this.startDateTime = startDateTime;
 
-        identifier = project.code + number;
+        id = project.code + number;
+    }
+
+    @Override
+    public String getId() {
+        return id;
     }
 }

@@ -1,71 +1,61 @@
 package com.una.programming_two_first_project.controller;
 
-import com.una.programming_two_first_project.model.ArgsCapableOption;
-import com.una.programming_two_first_project.model.ControllerOption;
-import com.una.programming_two_first_project.model.Option;
-import com.una.programming_two_first_project.util.OptionMapGenerator;
-import com.una.programming_two_first_project.util.OptionResolver;
+import com.una.programming_two_first_project.model.Command;
+import com.una.programming_two_first_project.model.ControllerCommand;
+import com.una.programming_two_first_project.model.Token;
+import com.una.programming_two_first_project.util.TokenMapGenerator;
+import com.una.programming_two_first_project.util.TokenResolver;
 
 import java.lang.reflect.Constructor;
 import java.util.*;
 
 public class MainEntryController implements EntryController
 {
-    public final Option AddOption = new Option("add", "a", "Add a new item to the system.");
-    public final Option EditOption = new Option("edit", "e", "Edit an existing item in the system.");
-    public final Option HelpOption = new Option("help", "h", "Show information about the program or a specific items for an option.");
-    public final Option ListOption = new Option("list", "l", "List all the items in the system.");
-    public final Option RemoveOption = new Option("remove", "r", "Remove an item from the system.");
+    public final Token AddToken = new Token("add", "Add a new item to the system.");
+    public final Token EditToken = new Token("edit", "Edit an existing item in the system.");
+    public final Token HelpToken = new Token("help", "Show information about the program or a specific items for an option.");
+    public final Token ListToken = new Token("list", "List all the items in the system.");
+    public final Token RemoveToken = new Token("remove", "Remove an item from the system.");
 
-    private final List<Option> Options = List.of(AddOption, EditOption, HelpOption, ListOption, RemoveOption);
-    private final Map<String, ControllerOption> ControllerOptionsMap = new HashMap<>();
-    private final Map<String, Option> OptionsMap = OptionMapGenerator.generateMap(Options);
+    private final List<Token> Tokens = List.of(AddToken, EditToken, HelpToken, ListToken, RemoveToken);
+    private final Map<String, ControllerCommand> ControllerCommandsMap = new HashMap<>();
+    private final Map<String, Token> TokensMap = TokenMapGenerator.generateMap(Tokens);
 
     @Override
-    public List<Option> getOptions() {
-        return Options;
-//        return List.of(new Option("collaborators", "c", "Manage collaborators info."),
-//                new Option("projects", "p", "Manage projects info."),
-//                new Option("sprints", "s", "Manage sprints info."),
-//                new Option("tasks", "t",  "Manage tasks info."));
+    public List<Token> getCommands() {
+        return Tokens;
+//        return List.of(new Token("collaborators", "c", "Manage collaborators info."),
+//                new Token("projects", "p", "Manage projects info."),
+//                new Token("sprints", "s", "Manage sprints info."),
+//                new Token("tasks", "t",  "Manage tasks info."));
     }
 
     @Override
-    public void registerControllerOption(String key, String shortKey, String description, Class<? extends ArgsCapableController> controllerType) {
-        ControllerOption option = new ControllerOption(key, shortKey, description, controllerType);
-        ControllerOptionsMap.put(key, option);
-        ControllerOptionsMap.put(shortKey, option);
+    public void registerControllerOption(String key, String description, Class<? extends ArgsCapableController> controllerType) {
+        ControllerCommand option = new ControllerCommand(key, description, controllerType);
+        ControllerCommandsMap.put(key, option);
     }
 
     @Override
-    public String getHelp(String optionName) {
-        String help = "";
+    public String getHelp(String tokenName) {
+        // TODO: Hardcoded version string
+        String help = """
+                |--------| Project Management System |--------|
+                 Version: 1.0
+                 Author: Oscar Rojas Alvarado (CocoCR300)
 
-        help = "|--------| Project Management System |--------|\n" +
-                " Version: 1.0\n" +
-                " Author: Oscar Rojas Alvarado (CocoCR300)\n\n" +
-                "Usage: management.exe [options] [item] [arguments]\n\n" +
-                "Options:\n";
+                Usage: management.exe [command(s)] [item]
 
-        for (Option option : Options) {
-            help += " -" + option.shortName + "|--" + option.name + "\t" + option.description + "\n";
+                Commands:
+                """;
+
+        for (Token token : Tokens) {
+            help += String.format(" %s\t%s\n", token.name, token.description);
         }
 
         help += "\nItems:\n";
-
-        for (String controllerName : ControllerOptionsMap.keySet()) {
-            // TODO: What if it's unordered? Let's guarantee an ordered collection or find another way to do this
-            String prefix, separator;
-
-            if (controllerName.length() == 1) {
-                prefix = "-";
-                separator = "|";
-            } else {
-                prefix = "--";
-                separator = "\n";
-            }
-
-            help += prefix + controllerName + separator;
+        for (String controllerName : ControllerCommandsMap.keySet()) {
+            help += String.format(" %s\n", controllerName);
         }
 
         return help;
@@ -76,42 +66,32 @@ public class MainEntryController implements EntryController
         String keyForHelp = "";
 
         if (args.length > 0) {
-            ArgsCapableOption helpOption = null;
-            ControllerOption controllerOption = null;
-            Option actionOption = null;
+            Command helpCommand = null;
+            ControllerCommand controllerCommand = null;
+            Token actionToken = null;
 
             List<String> argsForController = new ArrayList<>();
             for (String arg : args) {
-                var result = OptionResolver.extractOptionName(arg);
+                if (TokensMap.containsKey(arg)) {
+                    Token option = TokensMap.get(arg);
 
-                if (result.getKey()) {
-                    String optionName = result.getValue();
-                    Option option = OptionsMap.get(optionName);
-
-                    if (option == HelpOption) {
-                        helpOption = (ArgsCapableOption) option;
-//                        argsForController.add(arg);
-                    } else if (option != null) {
-                        actionOption = option;
-//                        argsForController.add(arg);
-                    } else if (ControllerOptionsMap.containsKey(optionName)) {
-                        controllerOption = ControllerOptionsMap.get(optionName);
-                        continue;
+                    if (option == HelpToken) {
+                        helpCommand = (Command) option;
+                    } else {
+                        actionToken = option;
                     }
-                    /* else {
-                        argsForController.add(arg);
-//                        return "Invalid option: " + arg;
-                    } */
-                } /*else {
-                    argsForController.add(arg);
-                } */
+
+                } else if (ControllerCommandsMap.containsKey(arg)) {
+                    controllerCommand = ControllerCommandsMap.get(arg);
+                    continue;
+                }
 
                 argsForController.add(arg);
             }
 
-            if (actionOption != null) {
-                if (controllerOption != null) {
-                    Class<? extends ArgsCapableController> controllerType = controllerOption.controllerType;
+            if (actionToken != null) {
+                if (controllerCommand != null) {
+                    Class<? extends ArgsCapableController> controllerType = controllerCommand.controllerType;
 
                     try {
                         Constructor<? extends ArgsCapableController> controllerConstructor = controllerType.getConstructor();
@@ -120,8 +100,8 @@ public class MainEntryController implements EntryController
                     } catch (Exception ex) {
                         return "An error occurred: \n" + ex;
                     }
-                } else if (helpOption == null && args.length > 1) {
-                    return "Unrecognized arguments for " + actionOption.name + " option. Did you intend to put an item after this option?";
+                } else if (helpCommand == null && args.length > 1) {
+                    return "Unrecognized arguments for " + actionToken.name + " command. Did you intend to put an item after this command?";
                 }
             }
         }

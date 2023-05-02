@@ -1,12 +1,12 @@
 package com.una.programming_two_first_project.controller;
 
-import com.una.programming_two_first_project.model.ArgsCapableOption;
+import com.una.programming_two_first_project.model.Command;
 
 import java.util.Map;
 
 public class SprintController implements ArgsCapableController
 {
-    private Map<String, ArgsCapableOption> optionsByEntryOptionName;
+    private Map<String, Command> optionsByEntryOptionName;
 
     private void add(String[] args) {
 
@@ -25,12 +25,12 @@ public class SprintController implements ArgsCapableController
     }
 
     @Override
-    public String getOptionInfo(String option) {
-        return optionsByEntryOptionName.get(option).description;
+    public String getCommandInfo(String command) {
+        return optionsByEntryOptionName.get(command).description;
     }
 
     @Override
-    public String getHelp(String optionName) {
+    public String getHelp(String tokenName) {
         return null;
     }
 

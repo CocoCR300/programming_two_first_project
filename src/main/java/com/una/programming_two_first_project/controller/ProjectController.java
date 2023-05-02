@@ -3,7 +3,7 @@ package com.una.programming_two_first_project.controller;
 public class ProjectController implements ArgsCapableController
 {
     @Override
-    public String getHelp(String optionName) {
+    public String getHelp(String tokenName) {
         return null;
     }
 
@@ -13,7 +13,7 @@ public class ProjectController implements ArgsCapableController
     }
 
     @Override
-    public String getOptionInfo(String option) {
+    public String getCommandInfo(String command) {
         return null;
     }
 

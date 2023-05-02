@@ -13,4 +13,9 @@ public class Project implements Model {
         this.endDateTime = endDateTime;
         this.startDateTime = startDateTime;
     }
+
+    @Override
+    public String getId() {
+        return code;
+    }
 }

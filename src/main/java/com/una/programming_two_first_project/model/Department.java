@@ -7,12 +7,21 @@ import java.util.List;
 
 public class Department implements Model {
     public final List<Collaborator> collaborators;
-    public final long id;
-    public final String name;
+    public final String id, name;
 
-    public Department(long id, @NotNull String name) {
+    public Department() {
+        collaborators = new ArrayList<>();
+        id = name = "";
+    }
+
+    public Department(String id, @NotNull String name) {
         collaborators = new ArrayList<>();
         this.id = id;
         this.name = name;
+    }
+
+    @Override
+    public String getId() {
+        return id;
     }
 }
