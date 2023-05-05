@@ -9,6 +9,12 @@ public class Sprint implements Model {
     public final Project project;
     public final String id, number;
 
+    public Sprint() {
+        endDateTime = startDateTime = null;
+        project = null;
+        id = number = "";
+    }
+
     public Sprint(Project project, @NotNull String number, @NotNull OffsetDateTime startDateTime,
                   @NotNull OffsetDateTime endDateTime) {
         this.project = project;
@@ -16,11 +22,15 @@ public class Sprint implements Model {
         this.endDateTime = endDateTime;
         this.startDateTime = startDateTime;
 
-        id = project.code + number;
+        id = formatId(project, number);
     }
 
     @Override
     public String getId() {
         return id;
+    }
+
+    public static String formatId(Project project, @NotNull String number) {
+        return String.format("P%s%s", (project != null ? project.code : "??"), !number.isEmpty() ? number : "??");
     }
 }

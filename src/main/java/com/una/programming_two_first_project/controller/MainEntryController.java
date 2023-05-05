@@ -1,10 +1,12 @@
 package com.una.programming_two_first_project.controller;
 
+import com.google.inject.Inject;
+import com.google.inject.Injector;
+import com.google.inject.Key;
 import com.una.programming_two_first_project.model.Command;
 import com.una.programming_two_first_project.model.ControllerCommand;
 import com.una.programming_two_first_project.model.Token;
 import com.una.programming_two_first_project.util.TokenMapGenerator;
-import com.una.programming_two_first_project.util.TokenResolver;
 
 import java.lang.reflect.Constructor;
 import java.util.*;
@@ -12,14 +14,21 @@ import java.util.*;
 public class MainEntryController implements EntryController
 {
     public final Token AddToken = new Token("add", "Add a new item to the system.");
+    public final Token RemoveToken = new Token("delete", "Remove an item from the system.");
     public final Token EditToken = new Token("edit", "Edit an existing item in the system.");
     public final Token HelpToken = new Token("help", "Show information about the program or a specific items for an option.");
-    public final Token ListToken = new Token("list", "List all the items in the system.");
-    public final Token RemoveToken = new Token("remove", "Remove an item from the system.");
+    public final Token ListToken = new Token("search", "Searches all the items in the system.");
 
     private final List<Token> Tokens = List.of(AddToken, EditToken, HelpToken, ListToken, RemoveToken);
     private final Map<String, ControllerCommand> ControllerCommandsMap = new HashMap<>();
     private final Map<String, Token> TokensMap = TokenMapGenerator.generateMap(Tokens);
+    private final Injector injector;
+
+    @Inject
+    public MainEntryController(Injector injector) {
+        this.injector = injector;
+    }
+
 
     @Override
     public List<Token> getCommands() {
@@ -91,11 +100,10 @@ public class MainEntryController implements EntryController
 
             if (actionToken != null) {
                 if (controllerCommand != null) {
-                    Class<? extends ArgsCapableController> controllerType = controllerCommand.controllerType;
+                    Class<? extends ArgsCapableController> controllerClass = controllerCommand.controllerClass;
 
                     try {
-                        Constructor<? extends ArgsCapableController> controllerConstructor = controllerType.getConstructor();
-                        ArgsCapableController childController = controllerConstructor.newInstance();
+                        ArgsCapableController childController = injector.getInstance(Key.get(controllerClass));
                         return childController.resolveArgs(argsForController.toArray(String[]::new));
                     } catch (Exception ex) {
                         return "An error occurred: \n" + ex;

@@ -5,11 +5,11 @@ import org.jetbrains.annotations.NotNull;
 
 public class ControllerCommand extends Token {
 
-    public final Class<? extends ArgsCapableController> controllerType;
+    public final Class<? extends ArgsCapableController> controllerClass;
 
-    public ControllerCommand(@NotNull String name, @NotNull String description, @NotNull Class<? extends ArgsCapableController> controllerType) {
+    public ControllerCommand(@NotNull String name, @NotNull String description, @NotNull Class<? extends ArgsCapableController> controllerClass) {
         super(name, description);
 
-        this.controllerType = controllerType;
+        this.controllerClass = controllerClass;
     }
 }

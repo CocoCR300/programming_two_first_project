@@ -2,6 +2,7 @@ package com.una.programming_two_first_project.model;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 public class Result<T, E>
@@ -42,6 +43,22 @@ public class Result<T, E>
         return errorValue;
     }
 
+    public Result<T, E> inspect(Consumer<T> function) {
+        if (isOk()) {
+            function.accept(result);
+        }
+
+        return this;
+    }
+
+    public T unwrapOr(T defaultValue) {
+        if (isOk()) {
+            return result;
+        }
+
+        return defaultValue;
+    }
+
     public <U> Result<U, E> andThen(Function<T, Result<U, E>> function) {
         if (isOk()) {
             return function.apply(result);
@@ -56,6 +73,14 @@ public class Result<T, E>
         }
 
         return err(errorValue);
+    }
+
+    public <U> U mapOrElse(Function<T, U> okMapperFunction, Function<E, U> errMapperFunction) {
+        if (isOk()) {
+            return okMapperFunction.apply(result);
+        }
+
+        return errMapperFunction.apply(errorValue);
     }
 
     public static <T, E> Result<T, E> err(@NotNull E errorValue) {

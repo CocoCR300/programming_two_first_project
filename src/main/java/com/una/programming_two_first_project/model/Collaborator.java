@@ -3,13 +3,13 @@ package com.una.programming_two_first_project.model;
 public class Collaborator implements Model {
 
     public final boolean isActive;
-    public final Department department;
-    public final String emailAddress, id, name, lastName, telephoneNumber;
+    public final transient Department department;
+    public final String departmentId, emailAddress, id, name, lastName, telephoneNumber;
 
     public Collaborator() {
         isActive = false;
         department = null;
-        emailAddress = id = name = lastName = telephoneNumber = "";
+        departmentId = emailAddress = id = name = lastName = telephoneNumber = "";
     }
 
     public Collaborator(String id, String name, String lastName,
@@ -22,6 +22,12 @@ public class Collaborator implements Model {
         this.emailAddress = emailAddress;
         this.department = department;
         this.isActive = isActive;
+
+        if (department != null) {
+            departmentId = department.id;
+        } else {
+            departmentId = "";
+        }
     }
 
     @Override

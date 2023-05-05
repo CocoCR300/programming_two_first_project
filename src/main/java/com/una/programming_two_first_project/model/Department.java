@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Department implements Model {
-    public final List<Collaborator> collaborators;
+    public final transient List<Collaborator> collaborators;
     public final String id, name;
 
     public Department() {

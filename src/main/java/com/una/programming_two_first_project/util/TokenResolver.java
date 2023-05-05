@@ -1,6 +1,8 @@
 package com.una.programming_two_first_project.util;
 
+import com.google.inject.Inject;
 import com.una.programming_two_first_project.model.*;
+import com.una.programming_two_first_project.service.DataStore;
 import org.jetbrains.annotations.NotNull;
 
 import java.lang.reflect.Constructor;
@@ -12,9 +14,16 @@ import static com.una.programming_two_first_project.model.Tuple.tuple;
 
 public class TokenResolver
 {
-    public static <T> Object[] mapCommandArgsToConstructor(Command command,
-                                                           Constructor<T> modelConstructor,
-                                                           Map<String, Object> argsByOptionName) {
+    private final DataStore dataStore;
+
+    @Inject
+    public TokenResolver(DataStore dataStore) {
+        this.dataStore = dataStore;
+    }
+
+    public <T> Object[] mapCommandArgsToConstructor(Command command,
+                                                    Constructor<T> modelConstructor,
+                                                    Map<String, Object> argsByOptionName) {
         Stream<Parameter> constructorParameters = Arrays.stream(modelConstructor.getParameters());
 
 //        Stream<String> optionNames = argsByOptionName.keySet().stream();
@@ -52,11 +61,11 @@ public class TokenResolver
             if (Model.class.isAssignableFrom(p.getType())) {
                 builder.append("-id");
                 argumentOptionName = builder.toString();
-                int entityId = (int) argsByOptionName.get(argumentOptionName);
-                String modelNameKey = p.getType().getSimpleName().toLowerCase();
-                /* TODO
-                    valueForArg = dataStore.getByModelName(modelNameKey).get(entityId);
-                */
+                String entityId = (String) argsByOptionName.get(argumentOptionName);
+
+                Result<Optional<Model>, String> result = dataStore.get((Class<Model>) p.getType(), entityId);
+                // TODO: What if an entity with the given ID does not exist?
+                valueForArg = result.unwrapOr(Optional.empty()).orElse(null);
             } else {
                 argumentOptionName = builder.toString();
                 valueForArg = argsByOptionName.get(argumentOptionName);
@@ -74,7 +83,7 @@ public class TokenResolver
         return argsForCommand;
     }
 
-    public static Result<Tuple<Command, Map<String, Object>>, String> extractCommandAndArgs(
+    public Result<Tuple<Command, Map<String, Object>>, String> extractCommandAndArgs(
             String[] args, Map<String, Command> availableCommands) {
         Command command = null;
         Map<String, Object> argsByName = new HashMap<>();
@@ -87,54 +96,45 @@ public class TokenResolver
                 continue;
             }
 
-            Tuple<Boolean, String> optionResolverResult = TokenResolver.extractOptionName(arg);
+            String optionName = extractOptionName(arg).orElse("");
+            if (command != null && command.args.containsKey(optionName)) {
+                Option option = command.getArgument(optionName);
+                Object valueForArg;
 
-            if (optionResolverResult.x()) {
-                String optionName = optionResolverResult.y();
-
-                if (command != null && command.args.containsKey(optionName)) {
-                    Option option = command.getArgument(optionName);
-                    Object valueForArg;
-
-                    if (option instanceof SwitchOption) {
-                        valueForArg = true;
-                    } else if (i + 1 < args.length && !TokenResolver.extractOptionName(args[i + 1]).x()) {
-                        valueForArg = args[++i]; // Value found, go to next argument option now
-                    } else {
-                        // Non-switch option must be followed by a value, there wasn't enough arguments or
-                        // the argument that followed the current one was an option, warn the user in this case.
-                        return Result.err(String.format("Missing value for option %s.", arg));
-                    }
-
-                    argsByName.put(option.name, valueForArg);
+                if (option instanceof SwitchOption) {
+                    valueForArg = true;
+                } else if (i + 1 < args.length && extractOptionName(args[i + 1]).isEmpty()) {
+                    valueForArg = args[++i]; // Value found, go to next argument option now
                 } else {
-                    return Result.err(String.format("Invalid option: %s", arg));
+                    // Non-switch option must be followed by a value, there wasn't enough arguments or
+                    // the argument that followed the current one was an option, warn the user in this case.
+                    return Result.err(String.format("Missing value for option %s.", arg));
                 }
+
+                argsByName.put(option.name, valueForArg);
+            } else {
+                return Result.err(String.format("Invalid option: %s", arg));
             }
         }
 
         return Result.ok(tuple(command, argsByName));
     }
 
-    public static @NotNull Tuple<Boolean, String> extractOptionName(String optionArg) {
+    public @NotNull Optional<String> extractOptionName(String optionArg) {
         if (optionArg.startsWith("--")) {
-            return tuple(true, optionArg.substring(2));
+            return Optional.of(optionArg.substring(2));
         } else if (optionArg.startsWith("-")) {
-            return tuple(true, optionArg.substring(1));
+            return Optional.of(optionArg.substring(1));
         }
 
-        return tuple(false, "");
+        return Optional.empty();
     }
 
-    public static @NotNull String[] extractOptionNames(String[] args) {
+    public @NotNull String[] extractOptionNames(String[] args) {
         List<String> optionNames = new ArrayList<>();
 
         for (int i = 0; i < args.length; ++i) {
-            Tuple<Boolean, String> optionName = extractOptionName(args[i]);
-
-            if (!optionName.x()) {
-                optionNames.add(optionName.y());
-            }
+            extractOptionName(args[i]).ifPresent(optionNames::add);
         }
 
         return optionNames.toArray(String[]::new);
