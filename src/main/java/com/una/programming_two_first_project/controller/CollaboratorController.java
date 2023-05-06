@@ -16,13 +16,13 @@ import java.util.Optional;
 
 public class CollaboratorController implements ArgsCapableController
 {
-    private final Option departmentIdOption = new Option("department-id", "d", "", -1);
-    private final Option emailAddressOption = new Option("email-address", "e", "", "");
-    private final Option idOption = new Option("id", "i", "", -1);
+    private final Option departmentIdOption = new Option("department-id", "d", "", false);
+    private final Option emailAddressOption = new Option("email-address", "e", "", false);
+    private final Option idOption = new Option("id", "i", "", true);
     private final Option isActiveOption = new SwitchOption("is-active", "j", "");
-    private final Option nameOption = new Option("name", "n", "", "");
-    private final Option lastNameOption = new Option("last-name", "l", "", "");
-    private final Option telephoneNumberOption = new Option("telephone-number", "t", "", "");
+    private final Option nameOption = new Option("name", "n", "", true);
+    private final Option lastNameOption = new Option("last-name", "l", "", true);
+    private final Option telephoneNumberOption = new Option("telephone-number", "t", "", true);
 
     private final Command<Map<String, Object>> addCommand = new Command<>("add", "", this::add,
             TokenMapGenerator.generateMap(idOption, nameOption, lastNameOption, telephoneNumberOption, emailAddressOption, departmentIdOption, isActiveOption));
@@ -47,18 +47,19 @@ public class CollaboratorController implements ArgsCapableController
     public String add(Map<String, Object> argsByOptionName) {
         Constructor<Collaborator>[] modelConstructors = (Constructor<Collaborator>[]) Collaborator.class.getConstructors();
         Constructor<Collaborator> collaboratorConstructor = modelConstructors[1];
-        Object[] constructorArgs = tokenResolver.mapCommandArgsToConstructor(addCommand, collaboratorConstructor, argsByOptionName);
-
-        try {
-            Collaborator collaborator = collaboratorConstructor.newInstance(constructorArgs);
-            // DataStore.ENTITY_ALREADY_EXISTS is the only type of error that can occur here, for now.
-            return dataStore.add(collaborator).mapOrElse(c -> {
-                dataStore.commitChanges();
-                return "Operation completed successfully.";
-            }, e -> String.format("A collaborator with ID: %s already exists.", constructorArgs[0]));
-        } catch (Exception ex) {
-            return String.format("An error occurred: %s", ex);
-        }
+        Result<Object[], String> result = tokenResolver.mapCommandArgsToConstructor(addCommand, collaboratorConstructor, argsByOptionName);
+        return (String) result.map(constructorArgs -> {
+            try {
+                Collaborator collaborator = collaboratorConstructor.newInstance(constructorArgs);
+                // DataStore.ENTITY_ALREADY_EXISTS is the only type of error that can occur here, for now.
+                return dataStore.add(collaborator).mapOrElse(c -> {
+                    dataStore.commitChanges();
+                    return "Operation completed successfully.";
+                }, e -> String.format("A collaborator with ID: %s already exists.", constructorArgs[0]));
+            } catch (Exception ex) {
+                return String.format("An error occurred: %s", ex);
+            }
+        }).unwrapSafe();
     }
 
     public String delete(String id) {
@@ -160,7 +161,7 @@ public class CollaboratorController implements ArgsCapableController
 //                    String optionName = optionResolverResult.y();
 //
 //                    if (commandsMap.containsKey(optionName)) {
-//                        actionOption = commandsMap.get(optionName);
+//                        actionOption = commandsMap.unwrap(optionName);
 //                        indexToSkip = i;
 //                        i = 0;
 //                    } else if (actionOption != null && actionOption.args.containsKey(optionName)) {
@@ -212,7 +213,7 @@ public class CollaboratorController implements ArgsCapableController
 //
 //                    String argumentOptionName = builder.toString();
 //                    Option argumentOption = finalActionOption.getArgument(argumentOptionName);
-//                    Object valueForArg = argsByName.get(argumentOptionName);
+//                    Object valueForArg = argsByName.unwrap(argumentOptionName);
 //
 //                    if (valueForArg == null) {
 //                        // NOTE: Option for constructor parameter was not provided, so take default value
@@ -231,7 +232,7 @@ public class CollaboratorController implements ArgsCapableController
 //            }
 //
 //            if (args.length == 1) {
-//                Token option = commandsMap.get(selectedOptionName);
+//                Token option = commandsMap.unwrap(selectedOptionName);
 //
 //                if (option instanceof Command argsCapableOption) {
 //                    // TODO: Use this to check a valid cast, maybe... What's the return value for an invalid cast?
@@ -258,7 +259,7 @@ public class CollaboratorController implements ArgsCapableController
                     .getAll(Collaborator.class)
                     .map(m -> formatEntities(m.values()));
 
-            return result.get();
+            return result.unwrap();
         }
 
         String id = argsByOptionName.values().stream().findFirst().get();
@@ -266,13 +267,13 @@ public class CollaboratorController implements ArgsCapableController
             Result<Optional<Collaborator>, String> result = dataStore.get(Collaborator.class, id);
             return result
                     .map(o -> o.map(this::formatEntity).orElse(String.format("There are no collaborators with ID: %s", id)))
-                    .get();
+                    .unwrap();
         } else {
             Result<String, String> result = dataStore
                     .get(Department.class, id)
                     .map(o -> o.map(d -> formatEntities(d.collaborators))
                             .orElse(String.format("There are no departments with ID: %s", id)));
-            return result.get();
+            return result.unwrap();
         }
     }
 

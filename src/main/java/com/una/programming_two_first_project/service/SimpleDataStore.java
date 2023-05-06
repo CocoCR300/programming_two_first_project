@@ -58,7 +58,7 @@ public class SimpleDataStore implements DataStore
     }
 
 //    private boolean areEntitiesLoaded(String modelKey) {
-//        return entitiesByName.get(modelKey).isPresent();
+//        return entitiesByName.unwrap(modelKey).isPresent();
 //    }
 
     private boolean changesMadeTo(String modelKey) {
@@ -209,7 +209,7 @@ public class SimpleDataStore implements DataStore
                         }
                     } else { // Is collection type
                         if (entitiesOfRelationFieldType == null) {
-                            entitiesOfRelationFieldType = getAll(relatedModelKey).get().values();
+                            entitiesOfRelationFieldType = getAll(relatedModelKey).unwrap().values();
                         }
                         List<Model> relatedEntities = new ArrayList<>();
 
@@ -234,7 +234,7 @@ public class SimpleDataStore implements DataStore
 //            CompletableFuture.runAsync(() -> {
 //
 //
-//            }, singleThreadExecutor).get();
+//            }, singleThreadExecutor).unwrap();
 //        } catch (InterruptedException e) {
 //            throw new RuntimeException(e);
 //        } catch (ExecutionException e) {
@@ -315,10 +315,10 @@ public class SimpleDataStore implements DataStore
         }
     }
 
-//    public <T extends Model> Result<T, String> get(Class<T> modelClass, String id) {
+//    public <T extends Model> Result<T, String> unwrap(Class<T> modelClass, String id) {
 //        Result<Map<String, T>, String> result = getAll(modelClass);
 //        return result.andThen(m -> {
-//            T model = m.get(id);
+//            T model = m.unwrap(id);
 //
 //            if (model != null) {
 //                return Result.ok(model);

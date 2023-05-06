@@ -18,7 +18,7 @@ public class Command<TArg> extends Token
     }
 
     public Option getArgument(String key) {
-        // NOTE: Accessing args.get(key) from outside this class requires casting the return value because for some
+        // NOTE: Accessing args.unwrap(key) from outside this class requires casting the return value because for some
         // reason it returns Object instead of Option
         return args.get(key);
     }

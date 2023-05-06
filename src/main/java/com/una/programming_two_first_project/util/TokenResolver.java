@@ -14,6 +14,8 @@ import static com.una.programming_two_first_project.model.Tuple.tuple;
 
 public class TokenResolver
 {
+    public static final String REQUIRED_OPTION_NOT_PRESENT = "Expected option '%s' not found.";
+
     private final DataStore dataStore;
 
     @Inject
@@ -21,7 +23,7 @@ public class TokenResolver
         this.dataStore = dataStore;
     }
 
-    public <T> Object[] mapCommandArgsToConstructor(Command command,
+    public <T> Result<Object[], String> mapCommandArgsToConstructor(Command command,
                                                     Constructor<T> modelConstructor,
                                                     Map<String, Object> argsByOptionName) {
         Stream<Parameter> constructorParameters = Arrays.stream(modelConstructor.getParameters());
@@ -44,7 +46,7 @@ public class TokenResolver
 //            return builder.toString();
 //        }).toArray();
 
-        Object[] argsForCommand = constructorParameters.map(p -> {
+        Stream<Result<Object, String>> mappedArgs = constructorParameters.map(p -> {
             String constructorParameterName = p.getName();
             StringBuilder builder = new StringBuilder(constructorParameterName);
 
@@ -65,7 +67,7 @@ public class TokenResolver
 
                 Result<Optional<Model>, String> result = dataStore.get((Class<Model>) p.getType(), entityId);
                 // TODO: What if an entity with the given ID does not exist?
-                valueForArg = result.unwrapOr(Optional.empty()).orElse(null);
+                valueForArg = result.unwrapOr(Optional.empty());
             } else {
                 argumentOptionName = builder.toString();
                 valueForArg = argsByOptionName.get(argumentOptionName);
@@ -73,26 +75,53 @@ public class TokenResolver
                 if (valueForArg == null) {
                     // NOTE: Option for constructor parameter was not provided, so take default value
                     Option option = command.getArgument(argumentOptionName);
-                    valueForArg = option.defaultValue;
+
+                    if (option.isRequired) {
+                        return Result.err(String.format(REQUIRED_OPTION_NOT_PRESENT, option.name));
+                    }
+                    valueForArg = Defaults.getDefault(p.getType());
                 }
             }
 
-            return valueForArg;
-        }).toArray();
+            return Result.ok(valueForArg);
+        });
 
-        return argsForCommand;
+        Optional<Result<Object, String>> argsForCommand = mappedArgs.reduce((r1, r2) -> {
+            Result<Object, String> combinedResult = r1.and(r2);
+            return combinedResult.map(v2 -> {
+                Object v1 = r1.unwrap();
+
+                List<Object> list;
+                if (List.class.isAssignableFrom(v1.getClass())) {
+                    list = (List<Object>) v1;
+                    list.add(v2);
+                } else {
+                    list = new ArrayList<>();
+                    list.add(v1);
+                    list.add(v2);
+                }
+
+                return list;
+            });
+        });
+
+        // TODO: Is it possible to receive no arguments here? Do we have enough checks before this line?
+        return argsForCommand.get().map(o -> ((List<Object>) o).toArray());
     }
 
     public Result<Tuple<Command, Map<String, Object>>, String> extractCommandAndArgs(
             String[] args, Map<String, Command> availableCommands) {
         Command command = null;
+        int skip = -1;
         Map<String, Object> argsByName = new HashMap<>();
 
-        for (int i = 0; i < args.length; ++i) {
+        for (int i = 0; i != skip && i < args.length; ++i) {
             String arg = args[i];
 
             if (availableCommands.containsKey(arg)) {
                 command = availableCommands.get(arg);
+                skip = i;
+                i = 0;
                 continue;
             }
 
@@ -104,7 +133,22 @@ public class TokenResolver
                 if (option instanceof SwitchOption) {
                     valueForArg = true;
                 } else if (i + 1 < args.length && extractOptionName(args[i + 1]).isEmpty()) {
-                    valueForArg = args[++i]; // Value found, go to next argument option now
+                    // Value found, go to next argument option now
+
+                    if (option instanceof TypedOption typedOption) {
+                        Result<?, String> result = typedOption.converterFunction.apply(args[++i]);
+                        Object value = result.unwrapSafe(); // Better than calling unwrap and unwrapErr, ending with
+                        // three different checks
+
+                        if (result.isOk()) {
+                            valueForArg = value;
+                        } else {
+                            // Argument could not be converted, return error message to the caller
+                            return Result.err((String) value);
+                        }
+                    }
+
+                    valueForArg = args[++i];
                 } else {
                     // Non-switch option must be followed by a value, there wasn't enough arguments or
                     // the argument that followed the current one was an option, warn the user in this case.

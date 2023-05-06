@@ -4,13 +4,13 @@ import org.jetbrains.annotations.NotNull;
 
 public class Option extends Token
 {
-    public final Object defaultValue;
+    public final boolean isRequired;
     public final String shortName;
 
-    public Option(@NotNull String name, @NotNull String shortName, @NotNull String description, Object defaultValue) {
+    public Option(@NotNull String name, @NotNull String shortName, @NotNull String description, boolean isRequired) {
         super(name, description);
 
-        this.defaultValue = defaultValue;
+        this.isRequired = isRequired;
         this.shortName = shortName;
     }
 }

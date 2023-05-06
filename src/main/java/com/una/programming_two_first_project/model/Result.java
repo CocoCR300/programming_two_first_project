@@ -15,14 +15,6 @@ public class Result<T, E>
         this.errorValue = errorValue;
     }
 
-    public T get() {
-        if (isOk()) {
-            return result;
-        }
-
-        throw new IllegalStateException("Attempted to access result on an error variant");
-    }
-
     public T okOrElse(T elseValue) {
         return isOk() ? result : elseValue;
     }
@@ -43,12 +35,50 @@ public class Result<T, E>
         return errorValue;
     }
 
+    @Override
+    public String toString() {
+        String variantName, value;
+        if (isOk()) {
+            variantName = "ok";
+            value = result.toString();
+        } else {
+            variantName = "err";
+            value = errorValue.toString();
+        }
+
+        return String.format("Result.%s(%s)", variantName, value);
+    }
+
+    public <U> Result<U, E> and(Result<U, E> otherResult) {
+        if (isOk()) {
+            return otherResult;
+        }
+
+        return Result.err(errorValue);
+    }
+
     public Result<T, E> inspect(Consumer<T> function) {
         if (isOk()) {
             function.accept(result);
         }
 
         return this;
+    }
+
+    public T unwrap() {
+        if (isOk()) {
+            return result;
+        }
+
+        throw new IllegalStateException("Attempted to access result on an Error variant");
+    }
+
+    public E unwrapErr() {
+        if (isErr()) {
+            return errorValue;
+        }
+
+        throw new IllegalStateException("Attempted to access the error value on an Ok variant");
     }
 
     public T unwrapOr(T defaultValue) {
