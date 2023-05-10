@@ -200,8 +200,6 @@ public class SimpleDataStore implements DataStore
                                 Model value = o.orElse(null);
                                 try {
                                     relationField.set(newEntity, value);
-                                    // TODO: Task.id is left with a wrong value, how to format it as it's supposed to
-                                    // without tying these two classes together?
                                 } catch (IllegalAccessException ex) {
                                     // TODO
                                 }
@@ -251,7 +249,7 @@ public class SimpleDataStore implements DataStore
     public <T extends Model> Result<T, String> add(T newEntity) {
         Class<T> entityClass = (Class<T>) newEntity.getClass();
         String modelKey = getModelKey(entityClass);
-        Result<Map<String, Model>, String> result = getAll(modelKey);
+        Result<Map<String, T>, String> result = getAll(modelKey);
 
         return result.andThen(m -> {
             if (!m.containsKey(newEntity.getId())) {
@@ -269,11 +267,11 @@ public class SimpleDataStore implements DataStore
     @Override
     public <T extends Model> Result<T, String> delete(Class<T> modelClass, String id) {
         String modelKey = getModelKey(modelClass);
-        Result<Map<String, Model>, String> result = getAll(modelKey);
+        Result<Map<String, T>, String> result = getAll(modelKey);
 
         return result.andThen(m -> {
             if (m.containsKey(id)) {
-                T entity = (T) m.remove(id);
+                T entity = m.remove(id);
                 setEntitiesMapChangeFlag(modelKey);
                 return Result.ok(entity);
             }

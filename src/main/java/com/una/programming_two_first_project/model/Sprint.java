@@ -4,7 +4,8 @@ import org.jetbrains.annotations.NotNull;
 
 import java.time.OffsetDateTime;
 
-public class Sprint implements Model {
+public class Sprint implements Model
+{
     public final OffsetDateTime endDateTime, startDateTime;
     public final Project project;
     public final String id, number;
@@ -31,6 +32,6 @@ public class Sprint implements Model {
     }
 
     public static String formatId(Project project, @NotNull String number) {
-        return String.format("P%s%s", (project != null ? project.code : "??"), !number.isEmpty() ? number : "??");
+        return String.format("P%s-%s", (project != null ? project.code : "??"), !number.isEmpty() ? number : "??");
     }
 }

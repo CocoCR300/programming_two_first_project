@@ -2,6 +2,7 @@ package com.una.programming_two_first_project.model;
 
 import org.jetbrains.annotations.NotNull;
 
+import javax.annotation.Nullable;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -24,7 +25,7 @@ public class Result<T, E>
     }
 
     public boolean isOk() {
-        return result != null;
+        return errorValue == null;
     }
 
     public Object unwrapSafe() {
@@ -37,13 +38,14 @@ public class Result<T, E>
 
     @Override
     public String toString() {
-        String variantName, value;
+        Object value;
+        String variantName;
         if (isOk()) {
             variantName = "ok";
-            value = result.toString();
+            value = result;
         } else {
             variantName = "err";
-            value = errorValue.toString();
+            value = errorValue;
         }
 
         return String.format("Result.%s(%s)", variantName, value);
@@ -117,7 +119,7 @@ public class Result<T, E>
         return new Result<>(null, errorValue);
     }
 
-    public static <T, E> Result<T, E> ok(@NotNull T result) {
+    public static <T, E> Result<T, E> ok(@Nullable T result) {
         return new Result<>(result, null);
     }
 }

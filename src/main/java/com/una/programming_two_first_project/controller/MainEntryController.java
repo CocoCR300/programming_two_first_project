@@ -85,12 +85,24 @@ public class MainEntryController implements EntryController
                     Token option = TokensMap.get(arg);
 
                     if (option == HelpToken) {
+                        if (helpCommand != null) {
+                            return "Help command was entered more than one time";
+                        }
+
                         helpCommand = (Command) option;
                     } else {
+                        if (actionToken != null) {
+                            return "Only one command that is not the help command was expected.";
+                        }
+
                         actionToken = option;
                     }
 
                 } else if (ControllerCommandsMap.containsKey(arg)) {
+                    if (controllerCommand != null) {
+                        return "Only one item was expected.";
+                    }
+
                     controllerCommand = ControllerCommandsMap.get(arg);
                     continue;
                 }
@@ -109,7 +121,9 @@ public class MainEntryController implements EntryController
                         return "An error occurred: \n" + ex;
                     }
                 } else if (helpCommand == null && args.length > 1) {
-                    return "Unrecognized arguments for " + actionToken.name + " command. Did you intend to put an item after this command?";
+                    return String.format(
+                            "Unrecognized arguments for %s command. Did you intend to put an item after this command?",
+                            actionToken.name);
                 }
             }
         }

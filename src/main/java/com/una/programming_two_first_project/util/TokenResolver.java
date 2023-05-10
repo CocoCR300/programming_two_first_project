@@ -23,9 +23,90 @@ public class TokenResolver
         this.dataStore = dataStore;
     }
 
-    public <T> Result<Object[], String> mapCommandArgsToConstructor(Command command,
-                                                    Constructor<T> modelConstructor,
-                                                    Map<String, Object> argsByOptionName) {
+    private Result<Object, String> extractArgumentValue(Option option, String optionNameUsed, String currentArg,
+                                                        List<String> argsForCommand, IntWrapper currentIndex) {
+        Object valueForArg;
+        String nextArg;
+
+        if (option instanceof SwitchOption) {
+            valueForArg = true;
+        } else if (currentIndex.value < argsForCommand.size()
+                && extractOptionName((nextArg = argsForCommand.get(++currentIndex.value))).isEmpty()) {
+            // Value found, go to next argument option now
+
+            if (option instanceof ConvertibleArgOption validatableOption) {
+                Result<Object, String> converterResult = validatableOption.converterFunction.apply(nextArg);
+                Object value = converterResult.unwrapSafe();
+
+                if (converterResult.isOk()) {
+                    valueForArg = value;
+                } else {
+                    String errorMessage = (String) value;
+                    return Result.err(String.format(errorMessage, optionNameUsed));
+                }
+            } else {
+                valueForArg = nextArg;
+            }
+
+//            if (option instanceof TypedOption typedOption) {
+//                Result<?, String> result = typedOption.converterFunction.apply(nextArg);
+//                Object value = result.unwrapSafe(); // Better than calling unwrap and unwrapErr, ending with
+//                // three different checks
+//
+//                if (result.isOk()) {
+//                    valueForArg = value;
+//                } else {
+//                    // Argument could not be converted, return error message to the caller
+//                    return Result.err((String) value);
+//                }
+//            }
+        } else {
+            // Non-switch option must be followed by a value, there wasn't enough arguments or
+            // the argument that followed the current one was an option, warn the user in this case.
+            return Result.err(String.format("Missing value for option %s.", currentArg));
+        }
+
+        return Result.ok(valueForArg);
+    }
+
+    private <T extends Model> Result<Map<String, Object>, String> extractArgumentValues(Command command,
+                                                                                        List<String> argsForCommand) {
+        Map<String, Object> argsByName = new HashMap<>();
+        for (IntWrapper i = new IntWrapper(); i.value < argsForCommand.size(); ++i.value) {
+            String arg = argsForCommand.get(i.value);
+            Optional<String> possibleOptionName = extractOptionName(arg);
+            if (possibleOptionName.isPresent()) {
+                String optionName = possibleOptionName.get();
+
+                @SuppressWarnings("unchecked") // Type erasure doing its thing
+                Optional<Option> possibleOption = command.getOption(optionName);
+
+                // Two checks
+                if (possibleOption.isPresent()) {
+                    Option option = possibleOption.get();
+
+                    Result<Object, String> result = extractArgumentValue(option, optionName, arg, argsForCommand, i);
+                    if (result.isErr()) {
+                        return Result.err(result.unwrapErr());
+                    }
+
+                    result.inspect(v -> argsByName.put(option.name, v));
+                } else {
+                    return Result.err(String.format("Invalid option: %s", arg));
+                }
+            } else {
+                // No option provided, fallback to the ordered arguments list, useful for single argument commands
+                Option option = (Option) command.getOptionAt(i.value).unwrap();
+                extractArgumentValue(option, option.name, arg, argsForCommand, i);
+            }
+        }
+
+        return Result.ok(argsByName);
+    }
+
+    public <T extends Model> Result<Object[], String> mapCommandArgsToConstructor(Command command,
+                                                                                  Constructor<T> modelConstructor,
+                                                                                  Map<String, Object> argsByOptionName) {
         Stream<Parameter> constructorParameters = Arrays.stream(modelConstructor.getParameters());
 
 //        Stream<String> optionNames = argsByOptionName.keySet().stream();
@@ -65,18 +146,27 @@ public class TokenResolver
                 argumentOptionName = builder.toString();
                 String entityId = (String) argsByOptionName.get(argumentOptionName);
 
-                Result<Optional<Model>, String> result = dataStore.get((Class<Model>) p.getType(), entityId);
-                // TODO: What if an entity with the given ID does not exist?
-                valueForArg = result.unwrapOr(Optional.empty());
+                if (entityId != null) {
+                    Optional<Model> possibleEntity = dataStore.get((Class<Model>) p.getType(), entityId).unwrap();
+
+                    if (possibleEntity.isEmpty()) {
+                        return Result.err(String.format("There is no %s with ID: %s", p.getType().getSimpleName().toLowerCase(), entityId));
+                    }
+
+                    valueForArg = possibleEntity.get();
+                }
             } else {
                 argumentOptionName = builder.toString();
                 valueForArg = argsByOptionName.get(argumentOptionName);
 
-                if (valueForArg == null) {
-                    // NOTE: Option for constructor parameter was not provided, so take default value
-                    Option option = command.getArgument(argumentOptionName);
+                if (valueForArg == null) { // Option for constructor parameter was not provided
+                    @SuppressWarnings("unchecked") // Type erasure doing its thing
+                    Optional<Option> possibleOption = command.getOption(argumentOptionName);
+                    Option option;
 
-                    if (option.isRequired) {
+                    // Already checked that "command.isRequired(option = possibleOption.get()).get()" will be present
+                    //noinspection OptionalGetWithoutIsPresent
+                    if (possibleOption.isPresent() && (Boolean) command.isRequired(option = possibleOption.get()).get()) {
                         return Result.err(String.format(REQUIRED_OPTION_NOT_PRESENT, option.name));
                     }
                     valueForArg = Defaults.getDefault(p.getType());
@@ -110,58 +200,39 @@ public class TokenResolver
     }
 
     public Result<Tuple<Command, Map<String, Object>>, String> extractCommandAndArgs(
-            String[] args, Map<String, Command> availableCommands) {
+            String[] args, Map<String, Command> availableCommands, Command helpCommand) {
         Command command = null;
-        int skip = -1;
-        Map<String, Object> argsByName = new HashMap<>();
+        List<String> argsForCommand = new ArrayList<>();
 
-        for (int i = 0; i != skip && i < args.length; ++i) {
-            String arg = args[i];
-
+        // Not checking for more than one command because that is being done on the MainEntryController
+        for (String arg : args) {
             if (availableCommands.containsKey(arg)) {
-                command = availableCommands.get(arg);
-                skip = i;
-                i = 0;
-                continue;
-            }
-
-            String optionName = extractOptionName(arg).orElse("");
-            if (command != null && command.args.containsKey(optionName)) {
-                Option option = command.getArgument(optionName);
-                Object valueForArg;
-
-                if (option instanceof SwitchOption) {
-                    valueForArg = true;
-                } else if (i + 1 < args.length && extractOptionName(args[i + 1]).isEmpty()) {
-                    // Value found, go to next argument option now
-
-                    if (option instanceof TypedOption typedOption) {
-                        Result<?, String> result = typedOption.converterFunction.apply(args[++i]);
-                        Object value = result.unwrapSafe(); // Better than calling unwrap and unwrapErr, ending with
-                        // three different checks
-
-                        if (result.isOk()) {
-                            valueForArg = value;
-                        } else {
-                            // Argument could not be converted, return error message to the caller
-                            return Result.err((String) value);
-                        }
-                    }
-
-                    valueForArg = args[++i];
-                } else {
-                    // Non-switch option must be followed by a value, there wasn't enough arguments or
-                    // the argument that followed the current one was an option, warn the user in this case.
-                    return Result.err(String.format("Missing value for option %s.", arg));
+                Command foundCommand = availableCommands.get(arg);
+                if (command == helpCommand || foundCommand == helpCommand) {
+                    argsForCommand.add(arg);
                 }
 
-                argsByName.put(option.name, valueForArg);
+                command = foundCommand;
             } else {
-                return Result.err(String.format("Invalid option: %s", arg));
+                argsForCommand.add(arg);
             }
         }
 
-        return Result.ok(tuple(command, argsByName));
+        if (command == null) {
+            return Result.err("No command was provided.");
+        }
+
+        long commandRequiredArgsCount = command.requiredArgs.length;
+        // TODO: Something better than this division...
+        if (argsForCommand.size() / 2 != commandRequiredArgsCount) {
+            return Result.err(String.format(
+                    "Expected %s arguments for command '%s', found %s arguments", commandRequiredArgsCount,
+                    command.name, argsForCommand.size() - 1));
+        }
+
+        Result<Map<String, Object>, String> result = extractArgumentValues(command, argsForCommand);
+        Command finalCommand = command;
+        return result.map(m -> tuple(finalCommand, m));
     }
 
     public @NotNull Optional<String> extractOptionName(String optionArg) {

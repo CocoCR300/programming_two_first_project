@@ -4,6 +4,7 @@ package com.una.programming_two_first_project.controller;
 import com.google.inject.Inject;
 import com.una.programming_two_first_project.model.*;
 import com.una.programming_two_first_project.service.DataStore;
+import com.una.programming_two_first_project.util.ArgsValidator;
 import com.una.programming_two_first_project.util.TokenMapGenerator;
 import com.una.programming_two_first_project.util.TokenResolver;
 import org.jetbrains.annotations.NotNull;
@@ -16,26 +17,36 @@ import java.util.Optional;
 
 public class CollaboratorController implements ArgsCapableController
 {
-    private final Option departmentIdOption = new Option("department-id", "d", "", false);
-    private final Option emailAddressOption = new Option("email-address", "e", "", false);
-    private final Option idOption = new Option("id", "i", "", true);
+    private final Option commandNameOption = new Option("command-name", "n", "");
+
+    private final Option departmentIdOption = new ConvertibleArgOption("department-id", "d", "",
+            ArgsValidator::isNotBlank);
+    private final Option emailAddressOption = new ConvertibleArgOption("email-address", "e", "",
+            ArgsValidator::isNotBlank);
+    private final Option idOption = new ConvertibleArgOption("id", "i", "",
+            ArgsValidator::isNotBlank);
     private final Option isActiveOption = new SwitchOption("is-active", "j", "");
-    private final Option nameOption = new Option("name", "n", "", true);
-    private final Option lastNameOption = new Option("last-name", "l", "", true);
-    private final Option telephoneNumberOption = new Option("telephone-number", "t", "", true);
+    private final Option nameOption = new ConvertibleArgOption("name", "n", "",
+            ArgsValidator::isNotBlank);
+    private final Option lastNameOption = new ConvertibleArgOption("last-name", "l", "",
+            ArgsValidator::isNotBlank);
+    private final Option telephoneNumberOption = new ConvertibleArgOption("telephone-number", "t", "",
+            ArgsValidator::isNotBlank);
 
     private final Command<Map<String, Object>> addCommand = new Command<>("add", "", this::add,
-            TokenMapGenerator.generateMap(idOption, nameOption, lastNameOption, telephoneNumberOption, emailAddressOption, departmentIdOption, isActiveOption));
+            new Option[] { idOption, nameOption, lastNameOption, telephoneNumberOption, emailAddressOption, departmentIdOption },
+            new Option[]{ isActiveOption });
     private final Command<String> deleteCommand = new Command<>("delete", "", this::delete,
-            TokenMapGenerator.generateMap(idOption));
+            new Option[]{ idOption }, null);
     private final Command<String> helpCommand = new Command<>("help", "", this::getHelp,
-            TokenMapGenerator.generateMap(nameOption));
+            new Option[] { commandNameOption }, null);
     private final Command<Map<String, String>> searchCommand = new Command<>("search", "", this::search,
-            TokenMapGenerator.generateMap(departmentIdOption, idOption));
+            null, new Option[] { departmentIdOption, idOption });
 
     private final DataStore dataStore;
     private final TokenResolver tokenResolver;
     private final List<Command> commands = List.of(addCommand, deleteCommand, helpCommand, searchCommand);
+    // TODO: Could delete this and create on demand on every usage of it, just the TokenResolver is doing it for now
     private final Map<String, Command> commandsMap = TokenMapGenerator.generateMap(commands);
 
     @Inject
@@ -51,11 +62,12 @@ public class CollaboratorController implements ArgsCapableController
         return (String) result.map(constructorArgs -> {
             try {
                 Collaborator collaborator = collaboratorConstructor.newInstance(constructorArgs);
-                // DataStore.ENTITY_ALREADY_EXISTS is the only type of error that can occur here, for now.
                 return dataStore.add(collaborator).mapOrElse(c -> {
                     dataStore.commitChanges();
                     return "Operation completed successfully.";
                 }, e -> String.format("A collaborator with ID: %s already exists.", constructorArgs[0]));
+                // DataStore.ENTITY_ALREADY_EXISTS is the only type of error result that can be received here, for now.
+
             } catch (Exception ex) {
                 return String.format("An error occurred: %s", ex);
             }
@@ -116,7 +128,7 @@ public class CollaboratorController implements ArgsCapableController
     public String resolveArgs(String[] args) {
         if (args.length > 0) {
 
-            Result<Tuple<Command, Map<String, Object>>, String> result = tokenResolver.extractCommandAndArgs(args, commandsMap);
+            Result<Tuple<Command, Map<String, Object>>, String> result = tokenResolver.extractCommandAndArgs(args, commandsMap, helpCommand);
 //            var argsForConstructor = result.andThen(t -> {
 //                Constructor<Collaborator> collaboratorConstructor = (Constructor<Collaborator>) Collaborator.class.getConstructors()[0];
 //                Object[] constructorArgs = TokenResolver.mapCommandArgsToConstructor(t.x(), collaboratorConstructor, t.y());
@@ -134,13 +146,13 @@ public class CollaboratorController implements ArgsCapableController
                 Command command = t.x();
                 Map<String, Object> commandArgs = t.y();
 
-                if (command.args.size() == 2) {
+                if (command.optionsCount() == 1) {
                     if (commandArgs.size() != 1) {
                         return String.format("Expected 1 argument for command %s, found %s.", command.name, commandArgs.size());
                     }
 
-                    Option onlyOption = (Option) command.args.values().stream().findFirst().get();
-                    String onlyArgKey = (String) onlyOption.name;
+                    Option onlyOption = (Option) command.getOptionAt(0).unwrap();
+                    String onlyArgKey = onlyOption.name;
                     return command.function.apply(commandArgs.get(onlyArgKey));
                 }
 
@@ -165,7 +177,7 @@ public class CollaboratorController implements ArgsCapableController
 //                        indexToSkip = i;
 //                        i = 0;
 //                    } else if (actionOption != null && actionOption.args.containsKey(optionName)) {
-//                        Option argumentOption = actionOption.getArgument(optionName);
+//                        Option argumentOption = actionOption.getOption(optionName);
 //                        Object valueForArg;
 //
 //                        if (argumentOption instanceof SwitchOption) {
@@ -212,7 +224,7 @@ public class CollaboratorController implements ArgsCapableController
 //                    }
 //
 //                    String argumentOptionName = builder.toString();
-//                    Option argumentOption = finalActionOption.getArgument(argumentOptionName);
+//                    Option argumentOption = finalActionOption.getOption(argumentOptionName);
 //                    Object valueForArg = argsByName.unwrap(argumentOptionName);
 //
 //                    if (valueForArg == null) {
