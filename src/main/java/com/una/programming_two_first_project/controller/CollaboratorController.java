@@ -34,10 +34,14 @@ public class CollaboratorController implements ArgsCapableController
             ArgsValidator::isNotBlank);
 
     private final Command<Map<String, Object>> addCommand = new Command<>("add", "", this::add,
-            new Option[] { idOption, nameOption, lastNameOption, telephoneNumberOption, emailAddressOption, departmentIdOption },
-            new Option[]{ isActiveOption });
+            new Option[] { idOption, nameOption, lastNameOption, telephoneNumberOption, emailAddressOption },
+            new Option[]{ departmentIdOption, isActiveOption });
     private final Command<String> deleteCommand = new Command<>("delete", "", this::delete,
             new Option[]{ idOption }, null);
+    private final Command<Map<String, Object>> editCommand = new Command<>("edit", "", this::edit,
+            new Option[]{ idOption },
+            new Option[] { nameOption, lastNameOption, telephoneNumberOption, emailAddressOption, departmentIdOption, isActiveOption });
+
     private final Command<String> helpCommand = new Command<>("help", "", this::getHelp,
             new Option[] { commandNameOption }, null);
     private final Command<Map<String, String>> searchCommand = new Command<>("search", "", this::search,
@@ -45,7 +49,7 @@ public class CollaboratorController implements ArgsCapableController
 
     private final DataStore dataStore;
     private final TokenResolver tokenResolver;
-    private final List<Command> commands = List.of(addCommand, deleteCommand, helpCommand, searchCommand);
+    private final List<Command> commands = List.of(addCommand, deleteCommand, editCommand, helpCommand, searchCommand);
     // TODO: Could delete this and create on demand on every usage of it, just the TokenResolver is doing it for now
     private final Map<String, Command> commandsMap = TokenMapGenerator.generateMap(commands);
 
@@ -58,13 +62,14 @@ public class CollaboratorController implements ArgsCapableController
     public String add(Map<String, Object> argsByOptionName) {
         Constructor<Collaborator>[] modelConstructors = (Constructor<Collaborator>[]) Collaborator.class.getConstructors();
         Constructor<Collaborator> collaboratorConstructor = modelConstructors[1];
-        Result<Object[], String> result = tokenResolver.mapCommandArgsToConstructor(addCommand, collaboratorConstructor, argsByOptionName);
+        Result<Object[], String> result = tokenResolver.mapCommandArgsToConstructor(addCommand, collaboratorConstructor, argsByOptionName, null);
         return (String) result.map(constructorArgs -> {
             try {
                 Collaborator collaborator = collaboratorConstructor.newInstance(constructorArgs);
                 return dataStore.add(collaborator).mapOrElse(c -> {
-                    dataStore.commitChanges();
-                    return "Operation completed successfully.";
+                    Result<Integer, Exception> commitResult = dataStore.commitChanges();
+                    return commitResult.mapOrElse(i -> "Operation completed successfully.",
+                            e -> "An error occurred. Please contact the developers.");
                 }, e -> String.format("A collaborator with ID: %s already exists.", constructorArgs[0]));
                 // DataStore.ENTITY_ALREADY_EXISTS is the only type of error result that can be received here, for now.
 
@@ -77,9 +82,40 @@ public class CollaboratorController implements ArgsCapableController
     public String delete(String id) {
         Result<Collaborator, String> result = dataStore.delete(Collaborator.class, id);
         return result.mapOrElse(c -> {
-            dataStore.commitChanges();
-            return "Operation completed successfully.";
+            Result<Integer, Exception> commitResult = dataStore.commitChanges();
+            return commitResult.mapOrElse(i -> "Operation completed successfully.",
+                    e -> "An error occurred. Please contact the developers.");
         }, e -> String.format("A collaborator with ID: %s does not exist.", id));
+    }
+
+    public String edit(Map<String, Object> argsByOptionName) {
+        String collaboratorId = (String) argsByOptionName.get(idOption.name);
+        Optional<Collaborator> possibleExistingInstance = dataStore.get(Collaborator.class, collaboratorId).unwrap();
+
+        if (possibleExistingInstance.isPresent()) {
+            Collaborator existingInstance = possibleExistingInstance.get();
+
+            Constructor<Collaborator>[] modelConstructors = (Constructor<Collaborator>[]) Collaborator.class.getConstructors();
+            Constructor<Collaborator> collaboratorConstructor = modelConstructors[1];
+            Result<Object[], String> result = tokenResolver.mapCommandArgsToConstructor(editCommand, collaboratorConstructor, argsByOptionName, existingInstance);
+            return (String) result.map(constructorArgs -> {
+                try {
+                    Collaborator collaborator = collaboratorConstructor.newInstance(constructorArgs);
+                    return dataStore
+                            .update(collaborator)
+                            .map(c -> {
+                                Result<Integer, Exception> commitResult = dataStore.commitChanges();
+                                return commitResult.mapOrElse(i -> "Operation completed successfully.",
+                                        e -> "An error occurred. Please contact the developers.");
+                            }).unwrapSafe();
+
+                } catch (Exception ex) {
+                    return "An error occurred. Please contact the developers.";
+                }
+            }).unwrapSafe();
+        }
+
+        return String.format("A collaborator with ID: '%s' does not exist.", collaboratorId);
     }
 
     @Override

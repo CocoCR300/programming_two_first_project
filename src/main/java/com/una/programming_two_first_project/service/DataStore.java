@@ -18,5 +18,6 @@ public interface DataStore
 //    public <T extends Model> Result<Optional<T>, String> get(String modelKey, String id);
     <T extends Model> Result<Map<String, T>, String> getAll(Class<T> modelClass);
 //    public <T extends Model> Result<Map<String, T>, String> getAll(String modelKey);
-    void commitChanges();
+    <T extends Model> Result<T, String> update(T newEntity);
+    Result<Integer, Exception> commitChanges();
 }

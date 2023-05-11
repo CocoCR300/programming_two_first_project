@@ -17,10 +17,10 @@ public class Command<TArg> extends Token
     public static final String ARG_INDEX_OUT_OF_BOUNDS = "ARG_INDEX_OUT_OF_BOUNDS";
 
     private final Map<String, Tuple<Option, Boolean>> argsMap;
+    private final Option[] optionalArgs;
+    private final Option[] requiredArgs;
 
     public final Function<TArg, String> function;
-    public final Option[] optionalArgs;
-    public final Option[] requiredArgs;
 
     public Command(@NotNull String name, @NotNull String description, @NotNull Function<TArg, String> function,
                    @Nullable Option[] requiredArgs, @Nullable Option[] optionalArgs) {
@@ -46,8 +46,16 @@ public class Command<TArg> extends Token
         argsMap = TokenMapGenerator.generateMap(allArgs);
     }
 
+    public int optionalOptionsCount() {
+        return optionalArgs.length;
+    }
+
     public int optionsCount() {
         return requiredArgs.length + optionalArgs.length;
+    }
+
+    public int requiredOptionsCount() {
+        return requiredArgs.length;
     }
 
     public Optional<Boolean> isRequired(Option option) {
@@ -79,6 +87,6 @@ public class Command<TArg> extends Token
             return Result.ok(requiredArgs[index]);
         }
 
-        return Result.ok(optionalArgs[index]);
+        return Result.ok(optionalArgs[index - requiredArgs.length]);
     }
 }

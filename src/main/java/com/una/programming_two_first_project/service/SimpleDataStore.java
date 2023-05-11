@@ -28,7 +28,7 @@ public class SimpleDataStore implements DataStore
 //    private final Map<String, Project> projects;
 //    private final Map<String, Sprint> sprints;
 //    private final Map<String, Task> tasks;
-    private final Map<String, Tuple<Class<? extends Model>, Boolean>> modelInfoByKey;
+    private final Map<String, Tuple<Class<? extends Model>, Integer>> modelInfoByKey;
     private final Map<String, Optional<Map<String,? extends Model>>> entitiesByName;
     private final String applicationDataFolderPath;
 
@@ -49,11 +49,11 @@ public class SimpleDataStore implements DataStore
                 getModelKey(Sprint.class),          Optional.empty(),
                 getModelKey(Task.class),            Optional.empty()));
         modelInfoByKey = new HashMap<>(Map.of(
-                getModelKey(Collaborator.class),    tuple(Collaborator.class, false),
-                getModelKey(Department.class),      tuple(Department.class, false),
-                getModelKey(Project.class),         tuple(Project.class, false),
-                getModelKey(Sprint.class),          tuple(Sprint.class, false),
-                getModelKey(Task.class),            tuple(Task.class, false)));
+                getModelKey(Collaborator.class),    tuple(Collaborator.class, 0),
+                getModelKey(Department.class),      tuple(Department.class, 0),
+                getModelKey(Project.class),         tuple(Project.class, 0),
+                getModelKey(Sprint.class),          tuple(Sprint.class, 0),
+                getModelKey(Task.class),            tuple(Task.class, 0)));
         singleThreadExecutor = Executors.newSingleThreadExecutor();
     }
 
@@ -62,7 +62,7 @@ public class SimpleDataStore implements DataStore
 //    }
 
     private boolean changesMadeTo(String modelKey) {
-        return modelInfoByKey.get(modelKey).y();
+        return modelInfoByKey.get(modelKey).y() > 0;
     }
 
     private File getModelFile(String modelKey) {
@@ -240,9 +240,20 @@ public class SimpleDataStore implements DataStore
 //        }
     }
 
-    private void setEntitiesMapChangeFlag(String modelKey) {
-        Tuple<Class<? extends Model>, Boolean> tuple = modelInfoByKey.get(modelKey);
-        modelInfoByKey.replace(modelKey, tuple(tuple.x(), true));
+    private void incrementEntitiesMapChangeCounter(String modelKey) {
+        Tuple<Class<? extends Model>, Integer> tuple = modelInfoByKey.get(modelKey);
+        modelInfoByKey.replace(modelKey, tuple(tuple.x(), tuple.y() + 1));
+    }
+
+    private int resetEntitiesMapsChangeFlag() {
+        int allChangesCount = 0;
+        for (Map.Entry<String, Tuple<Class<? extends Model>, Integer>> entry : modelInfoByKey.entrySet()) {
+            Tuple<Class<? extends Model>, Integer> tuple = entry.getValue();
+            modelInfoByKey.replace(entry.getKey(), tuple(tuple.x(), 0));
+            allChangesCount += tuple.y();
+        }
+
+        return allChangesCount;
     }
 
     @Override
@@ -254,15 +265,13 @@ public class SimpleDataStore implements DataStore
         return result.andThen(m -> {
             if (!m.containsKey(newEntity.getId())) {
                 m.put(newEntity.getId(), newEntity);
-                setEntitiesMapChangeFlag(modelKey);
+                incrementEntitiesMapChangeCounter(modelKey);
                 return Result.ok(newEntity);
             }
 
             return Result.err(ENTITY_ALREADY_EXISTS);
         });
     }
-
-
 
     @Override
     public <T extends Model> Result<T, String> delete(Class<T> modelClass, String id) {
@@ -272,7 +281,7 @@ public class SimpleDataStore implements DataStore
         return result.andThen(m -> {
             if (m.containsKey(id)) {
                 T entity = m.remove(id);
-                setEntitiesMapChangeFlag(modelKey);
+                incrementEntitiesMapChangeCounter(modelKey);
                 return Result.ok(entity);
             }
 
@@ -292,25 +301,73 @@ public class SimpleDataStore implements DataStore
     }
 
     @Override
-    public void commitChanges() {
+    public <T extends Model> Result<T, String> update(T newEntity) {
+        Class<T> entityClass = (Class<T>) newEntity.getClass();
+        String modelKey = getModelKey(entityClass);
+        Result<Map<String, T>, String> result = getAll(modelKey);
+
+        return result.map(m -> {
+            String entityId = newEntity.getId();
+            T existingEntity = m.get(entityId);
+
+            if (existingEntity != null) {
+                m.replace(entityId, newEntity);
+            } else {
+                m.put(entityId, newEntity);
+            }
+
+            incrementEntitiesMapChangeCounter(modelKey);
+
+//            @SuppressWarnings("unchecked")
+//            Class<T> modelClass = (Class<T>) newEntity.getClass();
+//            Field[] modelFields = modelClass.getFields();
+//            for (Field field : modelFields) {
+//                // TODO: Relation field annotation like EF Core?
+//                // https://learn.microsoft.com/en-us/dotnet/api/microsoft.entityframeworkcore.dbset-1.update?view=efcore-7.0#microsoft-entityframeworkcore-dbset-1-update(-0)
+//                // A recursive search of the navigation properties will be performed to find reachable entities that
+//                // are not already being tracked by the context. All entities found will be tracked by the context.
+//
+//                if (Model.class.isAssignableFrom(field.getType())) {
+//                    field.setAccessible(true);
+//                    try {
+//                        Model relatedEntity = (Model) field.get(newEntity);
+//                        Class<? extends Model> relatedEntityClass = (Class<? extends Model>) field.getType();
+//                        var possibleRelatedEntity = get(relatedEntityClass, relatedEntity.getId()).unwrap();
+//                        if (possibleRelatedEntity.isEmpty()) {
+//                            update(relatedEntity);
+//                        }
+//                    } catch (IllegalAccessException e) {
+//                        // TODO
+//                    }
+//                }
+//            }
+
+            return newEntity;
+        });
+    }
+
+    @Override
+    public Result<Integer, Exception> commitChanges() {
         Gson gson = createGson();
 
         for (Map.Entry<String, Optional<Map<String, ? extends Model>>> entry : entitiesByName.entrySet()) {
-            if (modelInfoByKey.get(entry.getKey()).y()) {
-                entry.getValue().ifPresent(m -> {
-                    String modelKey = entry.getKey();
-                    Object[] entities = m.values().toArray();
-                    File entitiesFile = getModelFile(modelKey);
-                    try (FileWriter fileWriter = new FileWriter(entitiesFile);
-                         BufferedWriter bufferedWriter = new BufferedWriter(fileWriter);
-                         JsonWriter jsonWriter = gson.newJsonWriter(bufferedWriter)) {
-                        gson.toJson(entities, modelInfoByKey.get(modelKey).x().arrayType(), jsonWriter);
-                    } catch (IOException e) {
-                        // TODO
-                    }
-                });
+            if (changesMadeTo(entry.getKey())) {
+                Map<String, ? extends Model> map = entry.getValue().get();
+                String modelKey = entry.getKey();
+                Object[] entities = map.values().toArray();
+                File entitiesFile = getModelFile(modelKey);
+                try (FileWriter fileWriter = new FileWriter(entitiesFile);
+                     BufferedWriter bufferedWriter = new BufferedWriter(fileWriter);
+                     JsonWriter jsonWriter = gson.newJsonWriter(bufferedWriter)) {
+                    gson.toJson(entities, modelInfoByKey.get(modelKey).x().arrayType(), jsonWriter);
+                } catch (IOException ex) {
+                    return Result.err(ex);
+                }
             }
         }
+
+        int allChangesCount = resetEntitiesMapsChangeFlag();
+        return Result.ok(allChangesCount);
     }
 
 //    public <T extends Model> Result<T, String> unwrap(Class<T> modelClass, String id) {

@@ -107,6 +107,14 @@ public class Result<T, E>
         return err(errorValue);
     }
 
+    public <F> Result<T, F> mapErr(Function<E, F> mapperFunction) {
+        if (isErr()) {
+            return err(mapperFunction.apply(errorValue));
+        }
+
+        return ok(result);
+    }
+
     public <U> U mapOrElse(Function<T, U> okMapperFunction, Function<E, U> errMapperFunction) {
         if (isOk()) {
             return okMapperFunction.apply(result);
