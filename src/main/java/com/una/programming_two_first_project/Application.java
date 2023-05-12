@@ -3,6 +3,7 @@ package com.una.programming_two_first_project;
 import com.google.inject.*;
 import com.google.inject.Module;
 import com.una.programming_two_first_project.controller.CollaboratorController;
+import com.una.programming_two_first_project.controller.DepartmentController;
 import com.una.programming_two_first_project.controller.EntryController;
 import com.una.programming_two_first_project.controller.MainEntryController;
 import com.una.programming_two_first_project.service.DataStore;
@@ -20,6 +21,7 @@ public class Application implements Module, Provider<DataStore>
         // TODO: Handle dates in the ISO 8601 format: YYYY-MM-DD
         EntryController controller = injector.getInstance(EntryController.class);
         controller.registerControllerOption("collaborator", "", CollaboratorController.class);
+        controller.registerControllerOption("department", "", DepartmentController.class);
         MainView view = new MainView(controller);
         System.out.println(view.sendArgs(args));
     }

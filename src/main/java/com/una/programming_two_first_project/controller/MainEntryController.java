@@ -8,7 +8,6 @@ import com.una.programming_two_first_project.model.ControllerCommand;
 import com.una.programming_two_first_project.model.Token;
 import com.una.programming_two_first_project.util.TokenMapGenerator;
 
-import java.lang.reflect.Constructor;
 import java.util.*;
 
 public class MainEntryController implements EntryController
@@ -40,7 +39,7 @@ public class MainEntryController implements EntryController
     }
 
     @Override
-    public void registerControllerOption(String key, String description, Class<? extends ArgsCapableController> controllerType) {
+    public void registerControllerOption(String key, String description, Class<? extends ModelController> controllerType) {
         ControllerCommand option = new ControllerCommand(key, description, controllerType);
         ControllerCommandsMap.put(key, option);
     }
@@ -112,10 +111,10 @@ public class MainEntryController implements EntryController
 
             if (actionToken != null) {
                 if (controllerCommand != null) {
-                    Class<? extends ArgsCapableController> controllerClass = controllerCommand.controllerClass;
+                    Class<? extends ModelController> controllerClass = controllerCommand.controllerClass;
 
                     try {
-                        ArgsCapableController childController = injector.getInstance(Key.get(controllerClass));
+                        ModelController childController = injector.getInstance(Key.get(controllerClass));
                         return childController.resolveArgs(argsForController.toArray(String[]::new));
                     } catch (Exception ex) {
                         return "An error occurred: \n" + ex;

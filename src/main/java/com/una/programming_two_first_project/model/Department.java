@@ -1,13 +1,20 @@
 package com.una.programming_two_first_project.model;
 
+import com.una.programming_two_first_project.annotation.InverseProperty;
+import com.una.programming_two_first_project.annotation.PrimaryKey;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class Department implements Model {
+    @InverseProperty(relationModelClass = Collaborator.class,
+            relationModelRelationFieldName = "department",
+            relationModelRelationIdFieldName = "departmentId")
     public final transient List<Collaborator> collaborators;
-    public final String id, name;
+    @PrimaryKey
+    public final String id;
+    public final String name;
 
     public Department() {
         collaborators = new ArrayList<>();

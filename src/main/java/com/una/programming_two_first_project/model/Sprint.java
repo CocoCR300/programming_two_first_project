@@ -1,5 +1,7 @@
 package com.una.programming_two_first_project.model;
 
+import com.una.programming_two_first_project.annotation.ForeignKey;
+import com.una.programming_two_first_project.annotation.PrimaryKey;
 import org.jetbrains.annotations.NotNull;
 
 import java.time.OffsetDateTime;
@@ -8,12 +10,16 @@ public class Sprint implements Model
 {
     public final OffsetDateTime endDateTime, startDateTime;
     public final Project project;
-    public final String id, number;
+    public final String number;
+    @PrimaryKey(autogenerate = false, composerMethodName = "formatId", composerAttributeNames = {"projectId", "id"})
+    public final String id;
+    @ForeignKey(relationModelType = Project.class, relationFieldName = "project")
+    public final String projectId;
 
     public Sprint() {
         endDateTime = startDateTime = null;
         project = null;
-        id = number = "";
+        id = number = projectId = "";
     }
 
     public Sprint(Project project, @NotNull String number, @NotNull OffsetDateTime startDateTime,
@@ -23,7 +29,13 @@ public class Sprint implements Model
         this.endDateTime = endDateTime;
         this.startDateTime = startDateTime;
 
-        id = formatId(project, number);
+        if (project != null) {
+            projectId = project.code;
+        } else {
+            projectId = "";
+        }
+
+        id = formatId(projectId, number);
     }
 
     @Override
@@ -31,7 +43,7 @@ public class Sprint implements Model
         return id;
     }
 
-    public static String formatId(Project project, @NotNull String number) {
-        return String.format("P%s-%s", (project != null ? project.code : "??"), !number.isEmpty() ? number : "??");
+    public static String formatId(String projectId, @NotNull String number) {
+        return String.format("P%s-%s", (!projectId.isEmpty() ? projectId : "??"), !number.isEmpty() ? number : "??");
     }
 }

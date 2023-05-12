@@ -1,10 +1,17 @@
 package com.una.programming_two_first_project.model;
 
+import com.una.programming_two_first_project.annotation.ForeignKey;
+import com.una.programming_two_first_project.annotation.PrimaryKey;
+
 public class Collaborator implements Model {
 
     public final boolean isActive;
     public final transient Department department;
-    public final String departmentId, emailAddress, id, name, lastName, telephoneNumber;
+    public final String emailAddress, name, lastName, telephoneNumber;
+    @ForeignKey(relationModelType = Department.class, relationFieldName = "department")
+    public final String departmentId;
+    @PrimaryKey(autogenerate = false)
+    public final String id;
 
     public Collaborator() {
         isActive = false;

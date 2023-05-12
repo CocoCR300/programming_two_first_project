@@ -1,8 +1,11 @@
 package com.una.programming_two_first_project.controller;
 
-import com.una.programming_two_first_project.model.Tuple;
+import com.una.programming_two_first_project.model.Command;
 
-public abstract class ModelController implements Controller
+import java.util.List;
+
+public interface ModelController extends Controller
 {
-//    public Tuple<Boolean, Object>
+    List<Command> getCommands();
+    String getCommandInfo(String command);
 }

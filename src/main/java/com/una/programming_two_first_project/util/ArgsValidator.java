@@ -5,6 +5,10 @@ import org.jetbrains.annotations.NotNull;
 
 public class ArgsValidator
 {
+    public static Result<Object, String> isCommaSeparatedList(@NotNull String arg) {
+        return arg.isBlank() ? Result.err("Argument for option '%s' cannot be empty.") : Result.ok(arg);
+    }
+
     public static Result<Object, String> isNotBlank(@NotNull String arg) {
         return arg.isBlank() ? Result.err("Argument for option '%s' cannot be empty.") : Result.ok(arg);
     }

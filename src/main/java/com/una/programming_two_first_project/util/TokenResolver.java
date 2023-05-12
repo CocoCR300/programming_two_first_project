@@ -9,13 +9,16 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Parameter;
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.una.programming_two_first_project.model.Tuple.tuple;
 
 public class TokenResolver
 {
-    public static final String REQUIRED_OPTION_NOT_PRESENT = "Expected option '%s' not found.";
+    public static final String ID_DOES_NOT_EXIST = "ID_DOES_NOT_EXIST";
+    public static final String SOME_IDS_DO_NOT_EXIST = "SOME_IDS_DO_NOT_EXIST";
+    public static final String REQUIRED_OPTION_NOT_PRESENT = "REQUIRED_OPTION_NOT_PRESENT";
 
     private final DataStore dataStore;
 
@@ -42,8 +45,8 @@ public class TokenResolver
     }
 
     private Result<Object, String> validateArgForOption(Option option, String optionNameUsed, String arg) {
-        if (option instanceof ConvertibleArgOption validatableOption) {
-            Result<Object, String> converterResult = validatableOption.converterFunction.apply(arg);
+        if (option instanceof ConvertibleArgumentOption convertibleArgumentOption) {
+            Result<Object, String> converterResult = convertibleArgumentOption.converterFunction.apply(arg);
 
             return converterResult.mapErr(e -> String.format(e, optionNameUsed));
         }
@@ -91,10 +94,166 @@ public class TokenResolver
         return Result.ok(argsByName);
     }
 
+    public <T extends Model> Result<Map<String, Object>, Tuple<String, String[]>> mapCommandArgsToModelFields(Command command,
+                                                                                             Class<T> modelClass,
+                                                                                             Map<String, Object> argsByOptionName,
+                                                                                             T existingEntity) {
+        Stream<Field> modelFields = Arrays.stream(modelClass.getFields());
+
+        Stream<Result<Tuple<String, Object>, Tuple<String, String[]>>> mappedArgs = modelFields.map(f -> {
+            String fieldName = f.getName();
+            StringBuilder optionNameFromFieldNameBuilder = new StringBuilder(fieldName);
+
+            for (int i = 0; i < optionNameFromFieldNameBuilder.length(); ++i) {
+                char currentChar = optionNameFromFieldNameBuilder.charAt(i);
+                if (Character.isUpperCase(currentChar)) {
+                    optionNameFromFieldNameBuilder.replace(i, i + 1, String.valueOf(Character.toLowerCase(currentChar)));
+                    optionNameFromFieldNameBuilder.insert(i, '-');
+                }
+            }
+
+            Object valueForField = null;
+            String optionName;
+            if (Model.class.isAssignableFrom(f.getType())) {
+                optionNameFromFieldNameBuilder.append("-id");
+                optionName = optionNameFromFieldNameBuilder.toString();
+                String entityId = (String) argsByOptionName.get(optionName);
+
+                if (entityId != null) {
+                    Class<Model> relatedModelClass = (Class<Model>) f.getType();
+                    Optional<Model> possibleEntity = dataStore.get(relatedModelClass, entityId).unwrap();
+
+                    if (possibleEntity.isEmpty()) {
+                        return Result.err(tuple(ID_DOES_NOT_EXIST, new String[] { relatedModelClass.getSimpleName().toLowerCase(), entityId }));
+                    }
+
+                    valueForField = possibleEntity.get();
+                }
+            } else if (Collection.class.isAssignableFrom(f.getType())) {
+                String modelClassName = optionNameFromFieldNameBuilder.toString();
+                modelClassName = modelClassName.substring(0, modelClassName.length() - 1);
+                optionNameFromFieldNameBuilder.insert(optionNameFromFieldNameBuilder.length() - 1, "-id");
+                optionName = optionNameFromFieldNameBuilder.toString();
+                String entityIdsJoined = (String) argsByOptionName.get(optionName);
+
+                if (entityIdsJoined != null) {
+                    String[] entityIds = Arrays.stream(entityIdsJoined.split(",")).map(String::trim).toArray(String[]::new);
+                    Class<Model> collectionFieldModelClass = (Class<Model>) dataStore.getClassFromSimpleName(modelClassName).get();
+                    List<Optional<Model>> possibleEntities = dataStore.getMany(collectionFieldModelClass, entityIds).unwrap();
+                    List<String> nonExistingIds = new ArrayList<>(0);
+
+                    for (int i = 0; i < possibleEntities.size(); ++i) {
+                        if (possibleEntities.get(i).isEmpty()) {
+                            nonExistingIds.add(entityIds[i]);
+                        }
+                    }
+
+                    if (nonExistingIds.size() != 0) {
+                        String relatedModelNamePlural = String.format("%ss", collectionFieldModelClass.getSimpleName().toLowerCase());
+                        nonExistingIds.add(0, relatedModelNamePlural);
+                        return Result.err(tuple(SOME_IDS_DO_NOT_EXIST, new String[]{ relatedModelNamePlural, String.join(", ", nonExistingIds) }));
+                    }
+
+                    valueForField = possibleEntities
+                            .stream()
+                            .filter(Optional::isPresent)
+                            .map(Optional::get)
+                            .collect(Collectors.toList());
+                    // NOTE: The returned list has no guarantees, revisit this thing if modifications to it need to be
+                    // done sometime
+                }
+            } else {
+                optionName = optionNameFromFieldNameBuilder.toString();
+                valueForField = argsByOptionName.get(optionName);
+
+                if (valueForField == null) { // Option for constructor parameter was not provided
+                    if (existingEntity != null) {
+                        // Extract field value from existing entity if present
+                        try {
+                            Field modelField = modelClass.getField(f.getName());
+                            modelField.setAccessible(true);
+                            valueForField = modelField.get(existingEntity);
+                        } catch (Exception ex) {
+                            // TODO
+                        }
+                    } else {
+                        valueForField = Defaults.getDefault(f.getType());
+                    }
+                }
+            }
+
+            @SuppressWarnings("unchecked") // Type erasure doing its thing
+            Optional<Option> possibleOption = command.getOption(optionName);
+            Option option;
+
+            // TODO: Shouldn't this check be at the top of the above if/else chain?
+            // Already checked that "command.isRequired(option = possibleOption.get()).get()" will be present
+            //noinspection OptionalGetWithoutIsPresent
+            if (valueForField == (valueForField != null ? Defaults.getDefault(valueForField.getClass()) : null)
+                    && possibleOption.isPresent()
+                    && (Boolean) command.isRequired(option = possibleOption.get()).get()) {
+                // "argsByOptionName" didn't have a value associated with the option and it is required,
+                // so return an error.
+                return Result.err(tuple(REQUIRED_OPTION_NOT_PRESENT, new String[] { option.name }));
+            }
+
+            return Result.ok(tuple(f.getName(), valueForField));
+        });
+
+        Result<Map<String, Object>, Tuple<String, String[]>> mappedFieldValues = mappedArgs.reduce(
+                Result.ok(new HashMap<>()),
+                (fullResult, itemResult) -> {
+                    Result<Tuple<String, Object>, Tuple<String, String[]>> combinedResult = fullResult.and(itemResult);
+                    return combinedResult.map(r -> {
+                        Map<String, Object> map = fullResult.unwrap();
+                        map.put(r.x(), r.y());
+                        return map;
+                });},
+                (result1, result2) -> {
+                    // TODO: This is never being executed, and I don't think I got this right... But it is working
+                    Result<Map<String, Object>, Tuple<String, String[]>> combinedResult = result1.and(result2);
+                    return combinedResult.map(r -> {
+                        Map<String, Object> finalMap = new HashMap<>();
+                        finalMap.putAll(result1.unwrap());
+                        finalMap.putAll(result2.unwrap());
+                        return finalMap;
+                });}
+        );
+
+//        Optional<Result<Object, String>> argsForCommand = mappedArgs.reduce((r1, r2) -> {
+//            Result<Object, String> combinedResult = r1.and(r2);
+//            return combinedResult.map(v2 -> {
+//                Tuple<String, Object> entry2 = (Tuple<String, Object>) v2;
+//                Object v1 = r1.unwrap();
+//
+//                Map<String, Object> map;
+//                if (Map.class.isAssignableFrom(v1.getClass())) {
+//                    map = (Map<String, Object>) v1;
+//                } else {
+//                    Tuple<String, Object> entry1 = (Tuple<String, Object>) v1;
+//                    map = new HashMap();
+//                    map.put(entry1.x(), entry1.y());
+//                }
+//
+//                map.put(entry2.x(), entry2.y());
+//                return map;
+//            });
+//        });
+
+        // TODO: Is it possible to receive no arguments here? Do we have enough checks before this line?
+        return mappedFieldValues;
+    }
+
     public <T extends Model> Result<Object[], String> mapCommandArgsToConstructor(Command command,
                                                                                   Constructor<T> modelConstructor,
                                                                                   Map<String, Object> argsByOptionName,
                                                                                   T existingEntity) {
+        // Better do this like "mapCommandArgsToModelFields", rework entity creation to access fields directly instead
+        // of using a parameterized constructor (create a EntityCreator class that works with the output of this method,
+        // the name is not so accurate, because it would also create new entities based on existing ones, like modify them).
+        // All of this in order to make it easier to work with list-type options (DepartmentController.collaboratorIds),
+        // in this situation, there is no constructor parameter for the collection fields, so we need to access the field
+        // directly, and Gson and others do this already, let's copy from them.
         Stream<Parameter> constructorParameters = Arrays.stream(modelConstructor.getParameters());
 
         Stream<Result<Object, String>> mappedArgs = constructorParameters.map(p -> {
@@ -181,14 +340,15 @@ public class TokenResolver
     }
 
     public Result<Tuple<Command, Map<String, Object>>, String> extractCommandAndArgs(
-            String[] args, Map<String, Command> availableCommands, Command helpCommand) {
+            String[] args, List<Command> availableCommands, Command helpCommand) {
         Command command = null;
+        Map<String, Command> availableCommandsMap = TokenMapGenerator.generateMap(availableCommands);
         List<String> argsForCommand = new ArrayList<>();
 
         // Not checking for more than one command because that is being done on the MainEntryController
         for (String arg : args) {
-            if (availableCommands.containsKey(arg)) {
-                Command foundCommand = availableCommands.get(arg);
+            if (availableCommandsMap.containsKey(arg)) {
+                Command foundCommand = availableCommandsMap.get(arg);
                 if (command == helpCommand || foundCommand == helpCommand) {
                     argsForCommand.add(arg);
                 }

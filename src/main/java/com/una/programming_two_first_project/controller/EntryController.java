@@ -7,5 +7,5 @@ import java.util.List;
 public interface EntryController extends Controller
 {
     List<Token> getCommands();
-    void registerControllerOption(String key, String description, Class<? extends ArgsCapableController> controllerType);
+    void registerControllerOption(String key, String description, Class<? extends ModelController> controllerType);
 }
