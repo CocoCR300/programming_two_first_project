@@ -6,6 +6,7 @@ import com.una.programming_two_first_project.annotation.PrimaryKey;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public class Project implements Model
 {
@@ -30,6 +31,19 @@ public class Project implements Model
         this.endDateTime = endDateTime;
         this.startDateTime = startDateTime;
         this.sprints = new ArrayList<>(0);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Project project = (Project) o;
+        return Objects.equals(code, project.code);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(code);
     }
 
     @Override

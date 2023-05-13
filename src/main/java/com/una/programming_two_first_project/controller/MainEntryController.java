@@ -3,13 +3,16 @@ package com.una.programming_two_first_project.controller;
 import com.google.inject.Inject;
 import com.google.inject.Injector;
 import com.google.inject.Key;
+import com.google.inject.Singleton;
 import com.una.programming_two_first_project.model.Command;
 import com.una.programming_two_first_project.model.ControllerCommand;
 import com.una.programming_two_first_project.model.Token;
 import com.una.programming_two_first_project.util.TokenMapGenerator;
+import com.una.programming_two_first_project.view.View;
 
 import java.util.*;
 
+@Singleton
 public class MainEntryController implements EntryController
 {
     public final Token AddToken = new Token("add", "Add a new item to the system.");
@@ -18,20 +21,22 @@ public class MainEntryController implements EntryController
     public final Token HelpToken = new Token("help", "Show information about the program or a specific items for an option.");
     public final Token ListToken = new Token("search", "Searches all the items in the system.");
 
-    private final List<Token> Tokens = List.of(AddToken, EditToken, HelpToken, ListToken, RemoveToken);
-    private final Map<String, ControllerCommand> ControllerCommandsMap = new HashMap<>();
-    private final Map<String, Token> TokensMap = TokenMapGenerator.generateMap(Tokens);
+    private final List<Token> tokens = List.of(AddToken, EditToken, HelpToken, ListToken, RemoveToken);
+    private final Map<String, ControllerCommand> controllerCommandsMap = new HashMap<>();
+    private final Map<String, Token> tokensMap = TokenMapGenerator.generateMap(tokens);
     private final Injector injector;
+    private final View view;
 
     @Inject
-    public MainEntryController(Injector injector) {
+    public MainEntryController(Injector injector, View view) {
         this.injector = injector;
+        this.view = view;
     }
 
 
     @Override
     public List<Token> getCommands() {
-        return Tokens;
+        return tokens;
 //        return List.of(new Token("collaborators", "c", "Manage collaborators info."),
 //                new Token("projects", "p", "Manage projects info."),
 //                new Token("sprints", "s", "Manage sprints info."),
@@ -39,9 +44,8 @@ public class MainEntryController implements EntryController
     }
 
     @Override
-    public void registerControllerOption(String key, String description, Class<? extends ModelController> controllerType) {
-        ControllerCommand option = new ControllerCommand(key, description, controllerType);
-        ControllerCommandsMap.put(key, option);
+    public String askForConfirmation(String message) {
+        return view.askForInput(message);
     }
 
     @Override
@@ -57,12 +61,12 @@ public class MainEntryController implements EntryController
                 Commands:
                 """;
 
-        for (Token token : Tokens) {
+        for (Token token : tokens) {
             help += String.format(" %s\t%s\n", token.name, token.description);
         }
 
         help += "\nItems:\n";
-        for (String controllerName : ControllerCommandsMap.keySet()) {
+        for (String controllerName : controllerCommandsMap.keySet()) {
             help += String.format(" %s\n", controllerName);
         }
 
@@ -71,8 +75,6 @@ public class MainEntryController implements EntryController
 
     @Override
     public String resolveArgs(String[] args) {
-        String keyForHelp = "";
-
         if (args.length > 0) {
             Command helpCommand = null;
             ControllerCommand controllerCommand = null;
@@ -80,8 +82,8 @@ public class MainEntryController implements EntryController
 
             List<String> argsForController = new ArrayList<>();
             for (String arg : args) {
-                if (TokensMap.containsKey(arg)) {
-                    Token option = TokensMap.get(arg);
+                if (tokensMap.containsKey(arg)) {
+                    Token option = tokensMap.get(arg);
 
                     if (option == HelpToken) {
                         if (helpCommand != null) {
@@ -97,12 +99,12 @@ public class MainEntryController implements EntryController
                         actionToken = option;
                     }
 
-                } else if (ControllerCommandsMap.containsKey(arg)) {
+                } else if (controllerCommandsMap.containsKey(arg)) {
                     if (controllerCommand != null) {
                         return "Only one item was expected.";
                     }
 
-                    controllerCommand = ControllerCommandsMap.get(arg);
+                    controllerCommand = controllerCommandsMap.get(arg);
                     continue;
                 }
 
@@ -128,6 +130,12 @@ public class MainEntryController implements EntryController
         }
 
         return getHelp("");
+    }
+
+    @Override
+    public void registerControllerOption(String key, String description, Class<? extends ModelController> controllerType) {
+        ControllerCommand option = new ControllerCommand(key, description, controllerType);
+        controllerCommandsMap.put(key, option);
     }
 
     @Override

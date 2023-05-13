@@ -9,7 +9,9 @@ import com.una.programming_two_first_project.annotation.ForeignKey;
 import com.una.programming_two_first_project.annotation.InverseProperty;
 import com.una.programming_two_first_project.annotation.PrimaryKey;
 import com.una.programming_two_first_project.model.*;
+import org.jetbrains.annotations.NotNull;
 
+import javax.annotation.Nullable;
 import java.io.*;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -21,6 +23,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.una.programming_two_first_project.model.Tuple.tuple;
 
@@ -55,19 +58,23 @@ public class SimpleDataStore implements DataStore
 
             Field primaryKeyField = null;
             List<Field> foreignKeyFields = new ArrayList<>();
+            List<Field> inversePropertyFields = new ArrayList<>();
             for (Field modelField : modelClass.getFields()) {
                 ForeignKey foreignKey = modelField.getAnnotation(ForeignKey.class);
                 PrimaryKey primaryKey = modelField.getAnnotation(PrimaryKey.class);
+                InverseProperty inverseProperty = modelField.getAnnotation(InverseProperty.class);
 
                 if (primaryKey != null) {
                     primaryKeyField = modelField;
                 } else if (foreignKey != null) {
                     foreignKeyFields.add(modelField);
+                } else if (inverseProperty != null) {
+                    inversePropertyFields.add(modelField);
                 }
             }
             assert primaryKeyField != null;
 
-            modelInfoByKey.put(modelKey, new ModelInfo<>(modelClass, primaryKeyField, foreignKeyFields));
+            modelInfoByKey.put(modelKey, new ModelInfo<>(modelClass, primaryKeyField, foreignKeyFields, inversePropertyFields));
         }
 
         singleThreadExecutor = Executors.newSingleThreadExecutor();
@@ -199,12 +206,27 @@ public class SimpleDataStore implements DataStore
             for (Tuple<Field, Field> relationAndRelationIdFields : relationFields) {
                 Collection<? extends Model> entitiesOfRelationFieldType = null;
                 Field relationField = relationAndRelationIdFields.x();
+                relationField.setAccessible(true);
                 Field relationIdField = relationAndRelationIdFields.y();
                 String relatedModelKey = relationField.getName();
-                relatedModelKey = relatedModelKey.substring(0, relatedModelKey.length() - 1);
 
                 for (Model newEntity : entityMap.values()) {
-                    if (relationField.getAnnotation(ForeignKey.class) != null) {
+                    InverseProperty inverseProperty;
+                    if ((inverseProperty = relationField.getAnnotation(InverseProperty.class)) != null) { // Is collection type
+                        Class<? extends Model> relationModelClass = inverseProperty.relationModelClass();
+                        if (entitiesOfRelationFieldType == null) {
+                            entitiesOfRelationFieldType = getAll(getModelKey(relationModelClass)).unwrap().values();
+                        }
+                        List<Model> relatedEntities = new ArrayList<>();
+
+                        for (Model entity : entitiesOfRelationFieldType) {
+                            if (newEntity.getId().equals(relationIdField.get(entity))) {
+                                relatedEntities.add(entity);
+                            }
+                        }
+
+                        relationField.set(newEntity, relatedEntities);
+                    } else if (relationIdField.getAnnotation(ForeignKey.class) != null) {
                         String relatedEntityId = (String) relationIdField.get(newEntity);
                         if (!relatedEntityId.isEmpty()) {
                             @SuppressWarnings("unchecked")
@@ -222,19 +244,6 @@ public class SimpleDataStore implements DataStore
                                 }
                             });
                         }
-                    } else { // Is collection type
-                        if (entitiesOfRelationFieldType == null) {
-                            entitiesOfRelationFieldType = getAll(relatedModelKey).unwrap().values();
-                        }
-                        List<Model> relatedEntities = new ArrayList<>();
-
-                        for (Model entity : entitiesOfRelationFieldType) {
-                            if (newEntity.getId().equals(relationIdField.get(entity))) {
-                                relatedEntities.add(entity);
-                            }
-                        }
-
-                        relationField.set(newEntity, relatedEntities);
                     }
                 }
             }
@@ -257,48 +266,95 @@ public class SimpleDataStore implements DataStore
 //        }
     }
 
-    private <T extends Model> Result<T, String> checkNewEntityRelations(T newEntity, boolean force) {
-        String modelKey = getModelKey(newEntity.getClass());
-        @SuppressWarnings("unchecked")
-        Class<T> modelClass = (Class<T>) newEntity.getClass();
-        Field[] modelFields = modelClass.getFields();
-        for (Field field : modelFields) {
+    private <T extends Model> Result<T, String> checkEntityRelations(@NotNull Class<T> modelClass, @Nullable T existingEntity,
+                                                                     @Nullable T newEntity, boolean force) {
+        ModelInfo modelInfo = modelInfoByKey.get(getModelKey(modelClass));
+        // TODO: Not using this Stream as an advantage
+        Field[] modelRelationFields = (Field[]) Stream.concat(modelInfo.foreignKeyFields.stream(), modelInfo.inversePropertyFields.stream()).toArray(Field[]::new);
+        for (Field field : modelRelationFields) {
+            try {
             // https://learn.microsoft.com/en-us/dotnet/api/microsoft.entityframeworkcore.dbset-1.update?view=efcore-7.0#microsoft-entityframeworkcore-dbset-1-update(-0)
             // A recursive search of the navigation properties will be performed to find reachable entities that
             // are not already being tracked by the context. All entities found will be tracked by the context.
 
-            InverseProperty inverseProperty;
-            if ((inverseProperty = field.getAnnotation(InverseProperty.class)) != null) {
-                field.setAccessible(true);
-                try {
+                ForeignKey foreignKey;
+                InverseProperty inverseProperty;
+                if ((inverseProperty = field.getAnnotation(InverseProperty.class)) != null) {
+                    field.setAccessible(true);
+
                     String fieldName = field.getName();
-                    Collection<? extends Model> relatedEntities = (Collection<? extends Model>) field.get(newEntity);
-                    String relatedModelName = fieldName.substring(0, fieldName.length() - 1);
+                    List<? extends Model> oldRelatedEntities = existingEntity != null ? (List<? extends Model>) field.get(existingEntity) : List.of();
+                    List<? extends Model> newRelatedEntities = newEntity != null ? (List<? extends Model>) field.get(newEntity) : List.of();
                     Class<? extends Model> relatedModelClass = inverseProperty.relationModelClass();
                     Field relatedModelRelationField = relatedModelClass.getField(inverseProperty.relationModelRelationFieldName());
                     Field relatedModelRelationIdField = relatedModelClass.getField(inverseProperty.relationModelRelationIdFieldName());
                     relatedModelRelationField.setAccessible(true);
                     relatedModelRelationIdField.setAccessible(true);
 
+                    // TODO: A slow operation. Use HashSet?
+                    List<? extends Model> allEntitiesRelated = Stream
+                            .concat(oldRelatedEntities.stream(), newRelatedEntities.stream())
+                            .distinct()
+                            .toList();
                     int changes = 0;
-                    for (Model relatedEntity : relatedEntities) {
+                    for (Model relatedEntity : allEntitiesRelated) {
                         String relationId = (String) relatedModelRelationIdField.get(relatedEntity);
-                        if (!relationId.isEmpty() && !force) {
-                            resetEntitiesMapsChangeFlag();
-                            return Result.err(ENTITY_ALREADY_RELATED);
-                        } else {
-                            // We would need to roll back these changes, but the SimpleDataStore is more adapted to
-                            // the behavior of this application (a single operation at a time), so it shouldn't be needed
-                            relatedModelRelationField.set(relatedEntity, newEntity);
-                            relatedModelRelationIdField.set(relatedEntity, newEntity.getId());
-                            changes++;
+
+                        // TODO: This won't work just fine with Sprint.id
+                        if (!newRelatedEntities.contains(relatedEntity)) {
+                            // Old relation that should be removed
+                            relatedModelRelationField.set(relatedEntity, null);
+                            relatedModelRelationIdField.set(relatedEntity, "");
+                        } else if (!oldRelatedEntities.contains(relatedEntity)) {
+                            // New relation that needs to be checked, after that, it can be updated
+                            if (!relationId.isEmpty() && !force) {
+                                resetEntitiesMapChangeFlag(getModelKey(relatedModelClass));
+                                return Result.err(ENTITY_ALREADY_RELATED);
+                            } else {
+                                // We would need to roll back these changes, but the SimpleDataStore is more adapted to
+                                // the behavior of this application (a single operation at a time), so it shouldn't be needed
+                                relatedModelRelationField.set(relatedEntity, newEntity);
+                                relatedModelRelationIdField.set(relatedEntity, newEntity.getId());
+                                changes++;
+                            }
                         }
                     }
 
+                    String relatedModelName = fieldName.substring(0, fieldName.length() - 1);
                     incrementEntitiesMapChangeCounter(relatedModelName, changes);
-                } catch (Exception ex) {
-                    // TODO
+
+                } else if ((foreignKey = field.getAnnotation(ForeignKey.class)) != null) {
+                    Class<? extends Model> relatedModelClass = foreignKey.relationModelClass();
+                    ModelInfo relatedModelInfo = modelInfoByKey.get(getModelKey(relatedModelClass));
+                    String relatedModelKey = getModelKey(relatedModelClass);
+
+                    for (Field inversePropertyFieldOnRelatedEntity : (List<Field>) relatedModelInfo.inversePropertyFields) {
+                        if (inversePropertyFieldOnRelatedEntity.getAnnotation(InverseProperty.class).relationModelClass() == modelClass) {
+                            // The models just have collection-type fields on the other end of a relation given
+                            // by a ForeignKey, we can just assume is a collection-type
+                            Field relationField = modelClass.getField(foreignKey.relationFieldName());
+                            relationField.setAccessible(true);
+                            Model oldRelatedEntity;
+                            if (existingEntity != null && (oldRelatedEntity = (Model) relationField.get(existingEntity)) != null) {
+                                // Remove "newEntity" from the collection-type relation field of the entity that it was
+                                // related to
+                                List<Model> oldRelatedEntityRelatedEntities = (List<Model>) inversePropertyFieldOnRelatedEntity.get(oldRelatedEntity);
+                                oldRelatedEntityRelatedEntities.remove(newEntity);
+                                incrementEntitiesMapChangeCounter(relatedModelKey);
+                            }
+
+                            Model newRelatedEntity = (Model) relationField.get(newEntity);
+                            if (newRelatedEntity != null) {
+                                // Relate "newEntity" to the entity indicated by one of its foreign keys
+                                List<Model> newRelatedEntityRelatedEntities = (List<Model>) inversePropertyFieldOnRelatedEntity.get(newRelatedEntity);
+                                newRelatedEntityRelatedEntities.add(newEntity);
+                                incrementEntitiesMapChangeCounter(relatedModelKey);
+                            }
+                        }
+                    }
                 }
+            } catch (Exception ex) {
+                // TODO
             }
 //                if (Model.class.isAssignableFrom(field.getType())) {
 //                    field.setAccessible(true);
@@ -380,6 +436,14 @@ public class SimpleDataStore implements DataStore
         return allChangesCount;
     }
 
+    private int resetEntitiesMapChangeFlag(String modelKey) {
+        ModelInfo modelInfo = modelInfoByKey.get(modelKey);
+        int changeCounter = modelInfo.changeCounter;
+        modelInfo.changeCounter = 0;
+
+        return changeCounter;
+    }
+
     @Override
     public Optional<Class<? extends Model>> getClassFromSimpleName(String modelClassSimpleName) {
         var foundInfo = modelInfoByKey.get(modelClassSimpleName);
@@ -388,15 +452,15 @@ public class SimpleDataStore implements DataStore
 
     @Override
     public <T extends Model> Result<T, String> add(T newEntity) {
-        Class<T> entityClass = (Class<T>) newEntity.getClass();
-        String modelKey = getModelKey(entityClass);
+        Class<T> modelClass = (Class<T>) newEntity.getClass();
+        String modelKey = getModelKey(modelClass);
         Result<Map<String, T>, String> result = getAll(modelKey);
         assignPrimaryKey(newEntity);
 
         return result.andThen(m -> {
             if (!m.containsKey(newEntity.getId())) {
                 m.put(newEntity.getId(), newEntity);
-                return checkNewEntityRelations(newEntity, false).map(e -> {
+                return checkEntityRelations(modelClass, null, newEntity, false).map(e -> {
                     incrementEntitiesMapChangeCounter(modelKey);
                     return e;
                 });
@@ -413,7 +477,9 @@ public class SimpleDataStore implements DataStore
 
         return result.andThen(m -> {
             if (m.containsKey(id)) {
-                T entity = m.remove(id);
+                T entity = m.get(id);
+                checkEntityRelations(modelClass, entity, null, true);
+                m.remove(id);
                 incrementEntitiesMapChangeCounter(modelKey);
                 return Result.ok(entity);
             }
@@ -450,13 +516,16 @@ public class SimpleDataStore implements DataStore
 
     @Override
     public <T extends Model> Result<T, String> update(T newEntity, boolean force) {
-        Class<T> entityClass = (Class<T>) newEntity.getClass();
-        String modelKey = getModelKey(entityClass);
+        Class<T> modelClass = (Class<T>) newEntity.getClass();
+        String modelKey = getModelKey(modelClass);
         Result<Map<String, T>, String> result = getAll(modelKey);
 
-        return result.andThen(m -> checkNewEntityRelations(newEntity, force).map(e -> {
+        return result.map(m -> {
             String entityId = newEntity.getId();
             T existingEntity = m.get(entityId);
+
+            // TODO: Ignoring Result
+            checkEntityRelations(modelClass, existingEntity, newEntity, force);
             if (existingEntity != null) {
                 // newEntity and existingEntity could be referencing the same instance, but the replace operation is
                 // cheap, so a check for equality is not so necessary
@@ -467,9 +536,36 @@ public class SimpleDataStore implements DataStore
             }
 
             incrementEntitiesMapChangeCounter(modelKey);
+            return newEntity;
+        });
+    }
 
-            return e;
-        }));
+    @Override
+    public <T extends Model> Result<List<T>, String> updateAll(Class<T> modelClass, List<T> newEntities, boolean force) {
+        String modelKey = getModelKey(modelClass);
+        Result<Map<String, T>, String> result = getAll(modelKey);
+
+        return result.map(m -> {
+            for (T newEntity : newEntities) {
+                String entityId = newEntity.getId();
+                T existingEntity = m.get(entityId);
+
+                // TODO: Ignoring Result
+                checkEntityRelations(modelClass, existingEntity, newEntity, force);
+                if (existingEntity != null) {
+                    // newEntity and existingEntity could be referencing the same instance, but the replace operation is
+                    // cheap, so a check for equality is not so necessary
+                    m.replace(entityId, newEntity);
+                } else {
+                    assignPrimaryKey(newEntity);
+                    m.put(entityId, newEntity);
+                }
+
+                incrementEntitiesMapChangeCounter(modelKey);
+            }
+
+            return newEntities;
+        });
     }
 
     @Override
@@ -514,12 +610,14 @@ public class SimpleDataStore implements DataStore
         public final Class<T> modelClass;
         public final Field primaryKeyField;
         public final List<Field> foreignKeyFields;
+        public final List<Field> inversePropertyFields;
         public int changeCounter;
 
-        public ModelInfo(Class<T> modelClass, Field primaryKeyField, List<Field> foreignKeyFields) {
+        public ModelInfo(Class<T> modelClass, Field primaryKeyField, List<Field> foreignKeyFields, List<Field> inversePropertyFields) {
             this.modelClass = modelClass;
             this.primaryKeyField = primaryKeyField;
             this.foreignKeyFields = foreignKeyFields;
+            this.inversePropertyFields = inversePropertyFields;
         }
     }
 }

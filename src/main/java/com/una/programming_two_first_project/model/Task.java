@@ -5,24 +5,35 @@ import com.una.programming_two_first_project.annotation.PrimaryKey;
 
 public class Task implements Model
 {
-    public final Sprint sprint;
+    public final transient Collaborator collaborator;
+    public final transient Sprint sprint;
+    @ForeignKey(relationModelClass = Collaborator.class, relationFieldName = "collaborator")
+    public final String collaboratorId;
     public final String description, name, neededResources;
     @PrimaryKey
     public final String id;
-    @ForeignKey(relationModelType = Sprint.class, relationFieldName = "sprint")
+    @ForeignKey(relationModelClass = Sprint.class, relationFieldName = "sprint")
     public final String sprintId;
 
     public Task() {
+        collaborator = null;
         sprint = null;
-        description = id = name = neededResources = sprintId = "";
+        collaboratorId = description = id = name = neededResources = sprintId = "";
     }
 
-    public Task(String id, String name, String description, Sprint sprint, String neededResources) {
+    public Task(String id, String name, String description, Collaborator collaborator, Sprint sprint, String neededResources) {
         this.id = id;
         this.name = name;
         this.description = description;
+        this.collaborator = collaborator;
         this.sprint = sprint;
         this.neededResources = neededResources;
+
+        if (collaborator != null) {
+            collaboratorId = collaborator.id;
+        } else {
+            collaboratorId = "";
+        }
 
         if (sprint != null) {
             sprintId = sprint.id;

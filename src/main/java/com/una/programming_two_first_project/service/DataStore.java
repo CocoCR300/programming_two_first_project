@@ -23,5 +23,6 @@ public interface DataStore
 //    public <T extends Model> Result<Map<String, T>, String> getAll(String modelKey);
     <T extends Model> Result<List<Optional<T>>, String> getMany(Class<T> modelClass, String[] ids);
     <T extends Model> Result<T, String> update(T newEntity, boolean force);
+    <T extends Model> Result<List<T>, String> updateAll(Class<T> modelClass, List<T> newEntities, boolean force);
     Result<Integer, Exception> commitChanges();
 }

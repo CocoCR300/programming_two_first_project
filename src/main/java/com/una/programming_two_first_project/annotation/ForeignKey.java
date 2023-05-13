@@ -8,6 +8,6 @@ import java.lang.annotation.RetentionPolicy;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface ForeignKey
 {
-    Class<? extends Model> relationModelType();
+    Class<? extends Model> relationModelClass();
     String relationFieldName();
 }

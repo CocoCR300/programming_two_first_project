@@ -2,23 +2,30 @@ package com.una.programming_two_first_project.controller;
 
 import com.una.programming_two_first_project.model.*;
 import com.una.programming_two_first_project.service.DataStore;
+import com.una.programming_two_first_project.formatter.Formatter;
 import com.una.programming_two_first_project.util.EntityCreator;
 import com.una.programming_two_first_project.util.TokenResolver;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Collection;
 import java.util.Map;
 
 public abstract class BaseModelController<T extends Model> implements ModelController
 {
     protected final Class<T> modelClass;
     protected final DataStore dataStore;
-    private final String modelNameLowercase;
+    protected final Formatter<T> formatter;
+    protected final EntryController parentEntryController;
     protected final TokenResolver tokenResolver;
 
+    private final String modelNameLowercase;
 
-    public BaseModelController(@NotNull Class<T> modelClass, @NotNull DataStore dataStore, @NotNull TokenResolver tokenResolver) {
+
+    public BaseModelController(@NotNull Class<T> modelClass, @NotNull DataStore dataStore, @NotNull Formatter<T> formatter, @NotNull EntryController entryController, @NotNull TokenResolver tokenResolver) {
         this.modelClass = modelClass;
         this.dataStore = dataStore;
+        this.formatter = formatter;
+        this.parentEntryController = entryController;
         this.tokenResolver = tokenResolver;
 
         modelNameLowercase = modelClass.getSimpleName().toLowerCase();
@@ -27,7 +34,7 @@ public abstract class BaseModelController<T extends Model> implements ModelContr
     protected abstract Command getAddCommand();
     protected abstract Command getHelpCommand();
 
-    protected String add(Map<String, Object> argsByOptionName) {
+    protected String add(Map<String, String> argsByOptionName) {
         Result<Map<String, Object>, Tuple<String, String[]>> result = tokenResolver.mapCommandArgsToModelFields(getAddCommand(), modelClass, argsByOptionName, null);
 
         return result.mapOrElse(fieldMappings -> {
@@ -40,9 +47,11 @@ public abstract class BaseModelController<T extends Model> implements ModelContr
                             e -> "An error occurred. Please contact the developers.");
                 }, e -> {
                     if (e.equals(DataStore.ENTITY_ALREADY_EXISTS)) {
-                        return String.format("A entity with ID: %s already exists.", entity.getId());
+                        return String.format("A %s with ID '%s' already exists.", modelNameLowercase, entity.getId());
                     } else if (e.equals(DataStore.ENTITY_ALREADY_RELATED)) {
-                        return String.format("A collaborator in the ID list already has a entity assigned.");
+                        // TODO: Wrong message
+                        return String.format("A %s in the ID list already has a %s assigned.",
+                                modelNameLowercase, e);
                     }
 
                     return "";
@@ -72,9 +81,35 @@ public abstract class BaseModelController<T extends Model> implements ModelContr
         Result<T, String> result = dataStore.delete(modelClass, id);
         return result.mapOrElse(c -> {
             Result<Integer, Exception> commitResult = dataStore.commitChanges();
-            return commitResult.mapOrElse(i -> "Operation completed successfully.",
+            return commitResult.mapOrElse(
+                    i -> "Operation completed successfully.",
                     e -> "An error occurred. Please contact the developers.");
         }, e -> String.format("A %s with ID '%s' does not exist.", modelNameLowercase, id));
+    }
+
+    @Override
+    public String askForConfirmation(String message) {
+        return parentEntryController.askForConfirmation(message);
+    }
+
+    public String formatEntity(T entity) {
+        return formatter.formatFull(entity, 0);
+    }
+
+    public String formatEntities(Collection<T> entities) {
+        return formatter.formatMany(entities, Formatter.FORMAT_FULL, 0);
+    }
+
+    protected String search(Map<String, String> argsByOptionName) {
+        if (argsByOptionName.size() == 0) {
+            Result<String, String> result = dataStore
+                    .getAll(modelClass)
+                    .map(m -> formatEntities(m.values()));
+
+            return result.unwrap();
+        }
+
+        return "";
     }
 
     @Override
@@ -88,10 +123,10 @@ public abstract class BaseModelController<T extends Model> implements ModelContr
                 Command command = t.x();
                 Map<String, Object> commandArgs = t.y();
 
-                if (command.optionsCount() == 1) {
-                    if (commandArgs.size() != 1) {
-                        return String.format("Expected 1 argument for command %s, found %s.", command.name, commandArgs.size());
-                    }
+                if (commandArgs.size() == 1) {
+//                    if (commandArgs.size() != 1) {
+//                        return String.format("Expected 1 argument for command %s, found %s.", command.name, commandArgs.size());
+//                    }
 
                     Option onlyOption = (Option) command.getOptionAt(0).unwrap();
                     String onlyArgKey = onlyOption.name;

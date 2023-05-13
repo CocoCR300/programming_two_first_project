@@ -1,6 +1,7 @@
 package com.una.programming_two_first_project.util;
 
 import com.google.inject.Inject;
+import com.google.inject.Singleton;
 import com.una.programming_two_first_project.model.*;
 import com.una.programming_two_first_project.service.DataStore;
 import org.jetbrains.annotations.NotNull;
@@ -14,6 +15,7 @@ import java.util.stream.Stream;
 
 import static com.una.programming_two_first_project.model.Tuple.tuple;
 
+@Singleton
 public class TokenResolver
 {
     public static final String ID_DOES_NOT_EXIST = "ID_DOES_NOT_EXIST";
@@ -96,7 +98,7 @@ public class TokenResolver
 
     public <T extends Model> Result<Map<String, Object>, Tuple<String, String[]>> mapCommandArgsToModelFields(Command command,
                                                                                              Class<T> modelClass,
-                                                                                             Map<String, Object> argsByOptionName,
+                                                                                             Map<String, String> argsByOptionName,
                                                                                              T existingEntity) {
         Stream<Field> modelFields = Arrays.stream(modelClass.getFields());
 
@@ -117,7 +119,7 @@ public class TokenResolver
             if (Model.class.isAssignableFrom(f.getType())) {
                 optionNameFromFieldNameBuilder.append("-id");
                 optionName = optionNameFromFieldNameBuilder.toString();
-                String entityId = (String) argsByOptionName.get(optionName);
+                String entityId = argsByOptionName.get(optionName);
 
                 if (entityId != null) {
                     Class<Model> relatedModelClass = (Class<Model>) f.getType();
@@ -134,7 +136,7 @@ public class TokenResolver
                 modelClassName = modelClassName.substring(0, modelClassName.length() - 1);
                 optionNameFromFieldNameBuilder.insert(optionNameFromFieldNameBuilder.length() - 1, "-id");
                 optionName = optionNameFromFieldNameBuilder.toString();
-                String entityIdsJoined = (String) argsByOptionName.get(optionName);
+                String entityIdsJoined = argsByOptionName.get(optionName);
 
                 if (entityIdsJoined != null) {
                     String[] entityIds = Arrays.stream(entityIdsJoined.split(",")).map(String::trim).toArray(String[]::new);

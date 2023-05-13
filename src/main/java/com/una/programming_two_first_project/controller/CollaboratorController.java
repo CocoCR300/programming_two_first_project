@@ -3,18 +3,18 @@ package com.una.programming_two_first_project.controller;
 
 import com.google.inject.Inject;
 import com.una.programming_two_first_project.model.*;
+import com.una.programming_two_first_project.formatter.CollaboratorFormatter;
 import com.una.programming_two_first_project.service.DataStore;
 import com.una.programming_two_first_project.util.ArgsValidator;
 import com.una.programming_two_first_project.util.EntityCreator;
 import com.una.programming_two_first_project.util.TokenMapGenerator;
 import com.una.programming_two_first_project.util.TokenResolver;
-import org.jetbrains.annotations.NotNull;
 
-import java.lang.reflect.Constructor;
-import java.util.Collection;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 public class CollaboratorController extends BaseModelController<Collaborator>
 {
@@ -35,14 +35,19 @@ public class CollaboratorController extends BaseModelController<Collaborator>
             ArgsValidator::isNotBlank);
     private final Option telephoneNumberOption = new ConvertibleArgumentOption("telephone-number", "t", "",
             ArgsValidator::isNotBlank);
-    private final Command<Map<String, Object>> addCommand = new Command<>("add", "", this::add,
+    private final Command<Map<String, String>> addCommand = new Command<>("add", "", this::add,
             new Option[] { idOption, nameOption, lastNameOption, telephoneNumberOption, emailAddressOption },
             new Option[]{ departmentIdOption, isActiveOption });
     private final Command<String> deleteCommand = new Command<>("delete", "", this::delete,
             new Option[]{ idOption }, null);
-    private final Command<Map<String, Object>> editCommand = new Command<>("edit", "", this::edit,
+
+    private final Option addTasksOption = new SwitchOption("add-tasks", "a", "");
+    private final Option removeTasksOption = new SwitchOption("remove-tasks", "r", "");
+    private final Option taskIdsOption = new SwitchOption("task-ids", "s", "");
+    private final Command<Map<String, String>> editCommand = new Command<>("edit", "", this::edit,
             new Option[]{ idOption },
-            new Option[] { nameOption, lastNameOption, telephoneNumberOption, emailAddressOption, departmentIdOption, isActiveOption });
+            new Option[] { nameOption, lastNameOption, telephoneNumberOption, emailAddressOption, departmentIdOption, isActiveOption,
+                            taskIdsOption, addTasksOption, removeTasksOption});
     private final Command<Map<String, String>> searchCommand = new Command<>("search", "", this::search,
             null, new Option[] { departmentIdOption, idOption });
 
@@ -51,8 +56,8 @@ public class CollaboratorController extends BaseModelController<Collaborator>
     private final Map<String, Command> commandsMap = TokenMapGenerator.generateMap(commands);
 
     @Inject
-    public CollaboratorController(DataStore dataStore, TokenResolver tokenResolver) {
-        super(Collaborator.class, dataStore, tokenResolver);
+    public CollaboratorController(DataStore dataStore, CollaboratorFormatter collaboratorFormatter, EntryController entryController, TokenResolver tokenResolver) {
+        super(Collaborator.class, dataStore, collaboratorFormatter, entryController, tokenResolver);
     }
 
 //    public String add(Map<String, Object> argsByOptionName) {
@@ -108,76 +113,63 @@ public class CollaboratorController extends BaseModelController<Collaborator>
 ////        }).unwrapSafe();
 //    }
 
-    public String edit(Map<String, Object> argsByOptionName) {
-        String collaboratorId = (String) argsByOptionName.get(idOption.name);
+    public String edit(Map<String, String> argsByOptionName) {
+        String collaboratorId = argsByOptionName.get(idOption.name);
         Optional<Collaborator> possibleExistingInstance = dataStore.get(Collaborator.class, collaboratorId).unwrap();
 
         if (possibleExistingInstance.isPresent()) {
             Collaborator existingInstance = possibleExistingInstance.get();
+            Result<Map<String, Object>, Tuple<String, String[]>> result = tokenResolver.mapCommandArgsToModelFields(editCommand, Collaborator.class, argsByOptionName, existingInstance);
+            return (String) result.map(fieldMappings -> {
+                List<Task> selectedTasks;
+                if ((selectedTasks = (List<Task>) fieldMappings.get(taskIdsOption.name)) != null) {
+                    List<Task> currentTasks = existingInstance.tasks;
+                    List<Task> newTasks;
+                    boolean addTasks = argsByOptionName.containsKey(addTasksOption.name),
+                            removeTasks = argsByOptionName.containsKey(removeTasksOption.name);
 
-            Constructor<Collaborator>[] modelConstructors = (Constructor<Collaborator>[]) Collaborator.class.getConstructors();
-            Constructor<Collaborator> collaboratorConstructor = modelConstructors[1];
-            Result<Object[], String> result = tokenResolver.mapCommandArgsToConstructor(editCommand, collaboratorConstructor, argsByOptionName, existingInstance);
-            return (String) result.map(constructorArgs -> {
-                try {
-                    Collaborator collaborator = collaboratorConstructor.newInstance(constructorArgs);
-                    return dataStore
-                            .update(collaborator, false)
-                            .map(c -> {
-                                Result<Integer, Exception> commitResult = dataStore.commitChanges();
-                                return commitResult.mapOrElse(i -> "Operation completed successfully.",
-                                        e -> "An error occurred. Please contact the developers.");
-                            }).unwrapSafe();
+                    if (addTasks && removeTasks) {
+                        return "add-tasks and remove-tasks options cannot be provided both at the same time.";
+                    } else if (!addTasks && !removeTasks) {
+                        fieldMappings.replace(taskIdsOption.name, selectedTasks);
+                    } else {
+                        if (addTasks) {
+                            newTasks = Stream
+                                    .concat(currentTasks.stream(), selectedTasks.stream())
+                                    .distinct()
+                                    .toList();
+                        } else {
+                            newTasks = new ArrayList<>(currentTasks);
 
-                } catch (Exception ex) {
-                    return "An error occurred. Please contact the developers.";
+                            for (Task task : selectedTasks) {
+                                if (!newTasks.remove(task)) {
+                                    return String.format("Task with ID '%s' is not assigned to this collaborator",
+                                            task.id);
+                                }
+                            }
+                        }
+
+                        fieldMappings.replace(taskIdsOption.name, newTasks);
+                    }
                 }
+
+                Collaborator newInstance = EntityCreator.newInstance(Collaborator.class, fieldMappings).unwrap();
+                return dataStore
+                        .update(newInstance, false)
+                        .map(c -> {
+                            Result<Integer, Exception> commitResult = dataStore.commitChanges();
+                            return commitResult.mapOrElse(i -> "Operation completed successfully.",
+                                    e -> "An error occurred. Please contact the developers.");
+                        }).unwrapSafe();
             }).unwrapSafe();
         }
 
-        return String.format("A collaborator with ID: '%s' does not exist.", collaboratorId);
+        return String.format("A collaborator with ID '%s' does not exist.", collaboratorId);
     }
 
     @Override
     public String getHelp(String tokenName) {
         return "Collaborator management";
-    }
-
-    public String formatEntity(@NotNull Collaborator collaborator) {
-        String departmentInfo;
-
-        if (collaborator.department != null) {
-            departmentInfo = "Department name:   " + collaborator.department.name;
-        } else {
-            departmentInfo = "This collaborator is not in any department.";
-        }
-
-        return String.format("""
-                [Collaborator ID: %s]
-                 Name:              %s
-                 Last name:         %s
-                 Telephone number:  %s
-                 Email address:     %s
-                 %s
-                 %s""",
-                collaborator.id, collaborator.name,
-                collaborator.lastName, collaborator.telephoneNumber,
-                collaborator.emailAddress, departmentInfo,
-                String.format("This collaborator is %s", collaborator.isActive ? "active" : "inactive"));
-    }
-
-    public String formatEntities(Collection<Collaborator> collaborators) {
-        if (collaborators.size() == 0) {
-            return "There are no collaborators.";
-        }
-
-        StringBuilder builder = new StringBuilder();
-        for (Collaborator c : collaborators) {
-            builder.append(formatEntity(c));
-            builder.append('\n');
-        }
-
-        return builder.toString();
     }
 
     @Override
@@ -337,26 +329,22 @@ public class CollaboratorController extends BaseModelController<Collaborator>
 
     // TODO: Should return an Iterable for large amounts of text
     public String search(Map<String, String> argsByOptionName) {
-        if (argsByOptionName.size() == 0) {
-            Result<String, String> result = dataStore
-                    .getAll(Collaborator.class)
-                    .map(m -> formatEntities(m.values()));
+        super.search(argsByOptionName);
 
-            return result.unwrap();
-        }
-
-        String id = argsByOptionName.values().stream().findFirst().get();
+        String id = argsByOptionName.get(idOption.name);
         if (argsByOptionName.containsKey(idOption.name)) {
-            Result<Optional<Collaborator>, String> result = dataStore.get(Collaborator.class, id);
-            return result
-                    .map(o -> o.map(this::formatEntity).orElse(String.format("There are no collaborators with ID: %s", id)))
-                    .unwrap();
+            return dataStore
+                    .get(Collaborator.class, id)
+                    .unwrap()
+                    .map(this::formatEntity)
+                    .orElse(String.format("There is no collaborator with ID '%s'.", id));
         } else {
-            Result<String, String> result = dataStore
+            String output = dataStore
                     .get(Department.class, id)
-                    .map(o -> o.map(d -> formatEntities(d.collaborators))
-                            .orElse(String.format("There are no departments with ID: %s", id)));
-            return result.unwrap();
+                    .unwrap()
+                    .map(d -> formatEntities(d.collaborators))
+                    .orElse(String.format("There are no departments with ID '%s'.", id));
+            return output;
         }
     }
 

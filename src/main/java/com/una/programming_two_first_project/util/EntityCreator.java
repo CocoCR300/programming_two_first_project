@@ -13,19 +13,28 @@ public class EntityCreator
     public static <T extends Model> Result<T, Exception> newInstance(Class<T> modelClass, Map<String, Object> fieldMappings) {
         try {
             Constructor<T> parameterlessConstructor = modelClass.getConstructor();
-            Field[] modelFields = modelClass.getFields();
             T newInstance = parameterlessConstructor.newInstance();
+            return setFields(newInstance, fieldMappings);
+        } catch (Exception ex) {
+            return Result.err(ex);
+        }
+    }
+
+    public static <T extends Model> Result<T, Exception> setFields(T instance, Map<String, Object> fieldMappings) {
+        try {
+            @SuppressWarnings("unchecked") Class<T> modelClass = (Class<T>) instance.getClass();
+            Field[] modelFields = modelClass.getFields();
 
             for (Field field : modelFields) {
                 field.setAccessible(true);
                 Object fieldValue = fieldMappings.get(field.getName());
 
                 if (!Collection.class.isAssignableFrom(field.getType()) && fieldValue != null) {
-                    field.set(newInstance, fieldValue);
+                    field.set(instance, fieldValue);
                 }
             }
 
-            return Result.ok(newInstance);
+            return Result.ok(instance);
         } catch (Exception ex) {
             return Result.err(ex);
         }
