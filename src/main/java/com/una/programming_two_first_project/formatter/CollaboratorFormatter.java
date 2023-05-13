@@ -28,7 +28,7 @@ public class CollaboratorFormatter extends BaseFormatter<Collaborator>
         if (collaborator.tasks.isEmpty()) {
             tasksInfo = "This collaborator has no tasks.";
         } else {
-            tasksInfo = String.format("Tasks:\n%s", taskFormatter.formatMany(collaborator.tasks, FORMAT_MINIMUM, 4);
+            tasksInfo = String.format("Tasks:\n%s", taskFormatter.formatMany(collaborator.tasks, FORMAT_MINIMUM, 4));
         }
 
         return indent(
