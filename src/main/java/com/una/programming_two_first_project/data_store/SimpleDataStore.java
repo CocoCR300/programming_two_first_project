@@ -1,14 +1,14 @@
-package com.una.programming_two_first_project.service;
+package com.una.programming_two_first_project.data_store;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
+import com.google.gson.*;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
 import com.google.inject.Inject;
-import com.una.programming_two_first_project.annotation.ForeignKey;
-import com.una.programming_two_first_project.annotation.InverseProperty;
-import com.una.programming_two_first_project.annotation.PrimaryKey;
+import com.una.programming_two_first_project.data_store.annotation.ForeignKey;
+import com.una.programming_two_first_project.data_store.annotation.InverseProperty;
+import com.una.programming_two_first_project.data_store.annotation.PrimaryKey;
 import com.una.programming_two_first_project.model.*;
+import com.una.programming_two_first_project.util.LocalDateAdapter;
 import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.Nullable;
@@ -17,6 +17,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.Executor;
@@ -96,6 +97,7 @@ public class SimpleDataStore implements DataStore
         return new GsonBuilder()
                 .setLenient()
                 .setPrettyPrinting()
+                .registerTypeAdapter(LocalDate.class, new LocalDateAdapter())
                 .create();
     }
 
@@ -129,7 +131,10 @@ public class SimpleDataStore implements DataStore
         entitiesByName.put(modelKey, Optional.of(entityMap));
 
         File entitiesFile = getModelFile(modelKey);
-//        entitiesFile.createNewFile();
+        if (!entitiesFile.exists()) {
+            return entityMap;
+        }
+
         try (FileReader fileReader = new FileReader(entitiesFile); BufferedReader bufferedReader = new BufferedReader(fileReader);
              JsonReader jsonReader = gson.newJsonReader(bufferedReader)) {
             jsonReader.setLenient(true);
@@ -170,34 +175,43 @@ public class SimpleDataStore implements DataStore
                 jsonReader.beginObject();
 
                 while (jsonReader.hasNext()) {
-                    Object value = null;
                     String attributeName = jsonReader.nextName();
                     String typeName = jsonReader.peek().toString();
 
                     var field = modelFields.get(attributeName);
 
-                    switch (typeName) {
-                        case "ARRAY":
-                            jsonReader.skipValue();
-                            break;
-                        case "BOOLEAN":
-                            value = jsonReader.nextBoolean();
-                            break;
-
-                        case "INTEGER":
-                            value = jsonReader.nextInt();
-                            break;
-
-                        case "STRING":
-                            value = jsonReader.nextString();
-
-                            if (value == null) {
-                                value = "";
-                            }
-                            break;
+                    if (typeName.equals("ARRAY")) {
+                        jsonReader.skipValue();
+                        continue;
                     }
 
-                    field.set(newEntity, value);
+                    TypeAdapter<?> adapter = gson.getAdapter(field.getType());
+                    Object value = adapter.read(jsonReader);
+
+//                    switch (typeName) {
+//                        case "ARRAY":
+//                            jsonReader.skipValue();
+//                            break;
+//                        case "BOOLEAN":
+//                            value = jsonReader.nextBoolean();
+//                            break;
+//
+//                        case "INTEGER":
+//                            value = jsonReader.nextInt();
+//                            break;
+//
+//                        case "STRING":
+//                            value = jsonReader.nextString();
+//
+//                            if (value == null) {
+//                                value = "";
+//                            }
+//                            break;
+//                    }
+
+                    if (value != null) {
+                        field.set(newEntity, value);
+                    }
                 }
                 jsonReader.endObject();
                 entityMap.put(newEntity.getId(), newEntity);
@@ -379,19 +393,42 @@ public class SimpleDataStore implements DataStore
         Class<T> entityClass = (Class<T>) newEntity.getClass();
         String modelKey = getModelKey(entityClass);
         Field primaryKeyField = modelInfoByKey.get(modelKey).primaryKeyField;
-        PrimaryKey primaryKey;
-        if ((primaryKey = primaryKeyField.getAnnotation(PrimaryKey.class)).autogenerate()) {
+        PrimaryKey primaryKeyAnnotation;
+        if ((primaryKeyAnnotation = primaryKeyField.getAnnotation(PrimaryKey.class)).autogenerate()) {
             primaryKeyField.setAccessible(true);
 
             try {
-                primaryKeyField.set(newEntity, UUID.randomUUID().toString());
+                if (primaryKeyField.getType().equals(String.class)) {
+                    primaryKeyField.set(newEntity, UUID.randomUUID().toString());
+                } else {
+                    Collection<T> entities = (Collection<T>) entitiesByName.get(modelKey).get().values();
+                    Number highestPrimaryKey = 0;
+                    for (T entity : entities) {
+                        Number currentPrimaryKey = (Number) primaryKeyField.get(entity);
+
+                        if (Objects.compare(highestPrimaryKey, currentPrimaryKey, Comparator.comparingLong(Number::longValue)) == -1) {
+                            highestPrimaryKey = currentPrimaryKey;
+                        }
+                    }
+
+                    // TODO: Overflow?
+                    Number primaryKey;
+                    if (int.class.isAssignableFrom(primaryKeyField.getType())) {
+                        primaryKey = highestPrimaryKey.intValue() + 1;
+                    } else if (short.class.isAssignableFrom(primaryKeyField.getType())) {
+                        primaryKey = (short) (highestPrimaryKey.shortValue() + 1);
+                    } else {
+                        primaryKey = highestPrimaryKey.longValue() + 1;
+                    }
+
+                    primaryKeyField.set(newEntity, primaryKey);
+                }
             } catch (IllegalAccessException e) {
                 // TODO
             }
-            primaryKeyField.setAccessible(false);
         } else {
             try {
-                String[] composerAttributeNames = primaryKey.composerAttributeNames();
+                String[] composerAttributeNames = primaryKeyAnnotation.composerAttributeNames();
                 String[] composerAttributeValues = new String[composerAttributeNames.length];
 
                 for (int i = 0; i < composerAttributeNames.length; ++i) {
@@ -404,7 +441,7 @@ public class SimpleDataStore implements DataStore
                 Method[] modelClassMethods = entityClass.getMethods();
 
                 for (Method method : modelClassMethods) {
-                    if (method.getName().equals(primaryKey.composerMethodName())) {
+                    if (method.getName().equals(primaryKeyAnnotation.composerMethodName())) {
                         composerMethod = method;
                     }
                 }
@@ -561,7 +598,7 @@ public class SimpleDataStore implements DataStore
                     m.put(entityId, newEntity);
                 }
 
-                incrementEntitiesMapChangeCounter(modelKey);
+                incrementEntitiesMapChangeCounter(modelKey, newEntities.size());
             }
 
             return newEntities;

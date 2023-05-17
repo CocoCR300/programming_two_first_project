@@ -130,4 +130,12 @@ public class Result<T, E>
     public static <T, E> Result<T, E> ok(@Nullable T result) {
         return new Result<>(result, null);
     }
+
+    public static <T> T unwrapSafe(@NotNull Result<T, T> result) {
+        if (result.isOk()) {
+            return result.result;
+        }
+
+        return result.errorValue;
+    }
 }

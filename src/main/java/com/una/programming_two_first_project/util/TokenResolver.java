@@ -2,8 +2,9 @@ package com.una.programming_two_first_project.util;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.una.programming_two_first_project.data_store.Model;
 import com.una.programming_two_first_project.model.*;
-import com.una.programming_two_first_project.service.DataStore;
+import com.una.programming_two_first_project.data_store.DataStore;
 import org.jetbrains.annotations.NotNull;
 
 import java.lang.reflect.Constructor;
@@ -19,6 +20,8 @@ import static com.una.programming_two_first_project.model.Tuple.tuple;
 public class TokenResolver
 {
     public static final String ID_DOES_NOT_EXIST = "ID_DOES_NOT_EXIST";
+    public static final String ID_IN_OPTION_LIST_NOT_RELATED = "ID_IN_OPTION_LIST_NOT_RELATED";
+    public static final String INVALID_ID_LIST_OPTION_COMBINATION = "INVALID_ID_LIST_OPTION_COMBINATION";
     public static final String SOME_IDS_DO_NOT_EXIST = "SOME_IDS_DO_NOT_EXIST";
     public static final String REQUIRED_OPTION_NOT_PRESENT = "REQUIRED_OPTION_NOT_PRESENT";
 
@@ -48,8 +51,7 @@ public class TokenResolver
 
     private Result<Object, String> validateArgForOption(Option option, String optionNameUsed, String arg) {
         if (option instanceof ConvertibleArgumentOption convertibleArgumentOption) {
-            Result<Object, String> converterResult = convertibleArgumentOption.converterFunction.apply(arg);
-
+            Result<Object, String> converterResult = convertibleArgumentOption.validate(arg);
             return converterResult.mapErr(e -> String.format(e, optionNameUsed));
         }
 
@@ -59,8 +61,10 @@ public class TokenResolver
     private <T extends Model> Result<Map<String, Object>, String> extractArgumentValues(Command command,
                                                                                         List<String> argsForCommand) {
         Map<String, Object> argsByName = new HashMap<>();
-        for (IntWrapper i = new IntWrapper(); i.value < argsForCommand.size(); ++i.value) {
-            String arg = argsForCommand.get(i.value);
+        int commandIndex = 0;
+        IntWrapper argumentIndex = new IntWrapper();
+        for (; argumentIndex.value < argsForCommand.size(); ++commandIndex, ++argumentIndex.value) {
+            String arg = argsForCommand.get(argumentIndex.value);
             Optional<String> possibleOptionName = extractOptionName(arg);
             if (possibleOptionName.isPresent()) {
                 String optionName = possibleOptionName.get();
@@ -71,7 +75,7 @@ public class TokenResolver
                 if (possibleOption.isPresent()) {
                     Option option = possibleOption.get();
 
-                    Result<Object, String> result = extractArgumentValue(option, optionName, arg, argsForCommand, i);
+                    Result<Object, String> result = extractArgumentValue(option, optionName, arg, argsForCommand, argumentIndex);
                     if (result.isErr()) {
                         return Result.err(result.unwrapErr());
                     }
@@ -81,10 +85,10 @@ public class TokenResolver
                     return Result.err(String.format("Invalid option: %s", arg));
                 }
             } else { // No option provided, fallback to the ordered arguments list, useful for single argument commands
-                Option option = (Option) command.getOptionAt(i.value).unwrap();
+                Option option = (Option) command.getOptionAt(commandIndex).unwrap();
 
                 // Duplicate code
-                Result<Object, String> result =  validateArgForOption(option, option.name, arg);
+                Result<Object, String> result = validateArgForOption(option, option.name, arg);
                 if (result.isErr()) {
                     return Result.err(result.unwrapErr());
                 }
@@ -94,6 +98,45 @@ public class TokenResolver
         }
 
         return Result.ok(argsByName);
+    }
+
+    public Result<Map<String, Object>, Tuple<String, String[]>> checkIdListOption(Map<String, Object> fieldMappings,
+                                                                 Map<String, String> argsByOptionName,
+                                                                 Option idListOption, Option addEntitiesOption,
+                                                                 Option removeEntitiesOption,
+                                                                 List<? extends Model> existingInstanceRelatedEntities) {
+        List<Model> selectedEntities;
+        if ((selectedEntities = (List<Model>) fieldMappings.get(idListOption.name)) != null) {
+            List<Model> newEntities;
+            boolean addEntities = argsByOptionName.containsKey(addEntitiesOption.name),
+                    removeEntities = argsByOptionName.containsKey(removeEntitiesOption.name);
+
+            if (addEntities && removeEntities) {
+                return Result.err(
+                        tuple(INVALID_ID_LIST_OPTION_COMBINATION, new String[] { addEntitiesOption.name , removeEntitiesOption.name }));
+            } else if (!addEntities && !removeEntities) {
+                fieldMappings.replace(idListOption.name, selectedEntities);
+            } else {
+                if (addEntities) {
+                    newEntities = Stream
+                            .concat(existingInstanceRelatedEntities.stream(), selectedEntities.stream())
+                            .distinct()
+                            .toList();
+                } else {
+                    newEntities = new ArrayList<>(existingInstanceRelatedEntities);
+
+                    for (Model entity : selectedEntities) {
+                        if (!newEntities.remove(entity)) {
+                            return Result.err(tuple(ID_IN_OPTION_LIST_NOT_RELATED, new String[] { entity.getId() }));
+                        }
+                    }
+                }
+
+                fieldMappings.replace(idListOption.name, newEntities);
+            }
+        }
+
+        return Result.ok(fieldMappings);
     }
 
     public <T extends Model> Result<Map<String, Object>, Tuple<String, String[]>> mapCommandArgsToModelFields(Command command,
@@ -342,17 +385,19 @@ public class TokenResolver
     }
 
     public Result<Tuple<Command, Map<String, Object>>, String> extractCommandAndArgs(
-            String[] args, List<Command> availableCommands, Command helpCommand) {
+            String[] args, Map<String, Command> availableCommands, Command helpCommand) {
         Command command = null;
-        Map<String, Command> availableCommandsMap = TokenMapGenerator.generateMap(availableCommands);
         List<String> argsForCommand = new ArrayList<>();
 
         // Not checking for more than one command because that is being done on the MainEntryController
         for (String arg : args) {
-            if (availableCommandsMap.containsKey(arg)) {
-                Command foundCommand = availableCommandsMap.get(arg);
-                if (command == helpCommand || foundCommand == helpCommand) {
+            if (availableCommands.containsKey(arg)) {
+                Command foundCommand = availableCommands.get(arg);
+                if (command == helpCommand) {
                     argsForCommand.add(arg);
+                    break;
+                } else if (foundCommand == helpCommand && command != null) {
+                    argsForCommand.add(command.name);
                 }
 
                 command = foundCommand;

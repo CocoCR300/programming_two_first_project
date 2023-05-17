@@ -1,9 +1,10 @@
 package com.una.programming_two_first_project.model;
 
-import com.una.programming_two_first_project.annotation.InverseProperty;
-import com.una.programming_two_first_project.annotation.PrimaryKey;
+import com.una.programming_two_first_project.data_store.Model;
+import com.una.programming_two_first_project.data_store.annotation.InverseProperty;
+import com.una.programming_two_first_project.data_store.annotation.PrimaryKey;
 
-import java.time.OffsetDateTime;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -14,22 +15,22 @@ public class Project implements Model
             relationModelRelationFieldName = "project",
             relationModelRelationIdFieldName = "projectId")
     public final transient List<Sprint> sprints;
-    public final OffsetDateTime endDateTime, startDateTime;
-    @PrimaryKey(autogenerate = false)
-    public final String code;
+    public final LocalDate endDate, startDate;
+    @PrimaryKey public final short number;
     public final String name;
 
     public Project() {
-        endDateTime = startDateTime = null;
-        code = name = "";
+        number = 0;
+        endDate = startDate = null;
+        name = "";
         sprints = new ArrayList<>(0);
     }
 
-    public Project(String code, String name, OffsetDateTime startDateTime, OffsetDateTime endDateTime) {
-        this.code = code;
+    public Project(short number, String name, LocalDate startDate, LocalDate endDate) {
+        this.number = number;
         this.name = name;
-        this.endDateTime = endDateTime;
-        this.startDateTime = startDateTime;
+        this.endDate = endDate;
+        this.startDate = startDate;
         this.sprints = new ArrayList<>(0);
     }
 
@@ -38,16 +39,20 @@ public class Project implements Model
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Project project = (Project) o;
-        return Objects.equals(code, project.code);
+        return number == project.number;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(code);
+        return Objects.hash(number);
+    }
+
+    public String getCode() {
+        return String.format("%02d", number);
     }
 
     @Override
     public String getId() {
-        return code;
+        return getCode();
     }
 }

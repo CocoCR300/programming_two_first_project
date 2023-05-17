@@ -1,7 +1,8 @@
 package com.una.programming_two_first_project.model;
 
-import com.una.programming_two_first_project.annotation.InverseProperty;
-import com.una.programming_two_first_project.annotation.PrimaryKey;
+import com.una.programming_two_first_project.data_store.Model;
+import com.una.programming_two_first_project.data_store.annotation.InverseProperty;
+import com.una.programming_two_first_project.data_store.annotation.PrimaryKey;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;

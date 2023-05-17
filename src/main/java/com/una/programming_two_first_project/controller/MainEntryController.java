@@ -15,13 +15,14 @@ import java.util.*;
 @Singleton
 public class MainEntryController implements EntryController
 {
-    public final Token AddToken = new Token("add", "Add a new item to the system.");
-    public final Token RemoveToken = new Token("delete", "Remove an item from the system.");
-    public final Token EditToken = new Token("edit", "Edit an existing item in the system.");
-    public final Token HelpToken = new Token("help", "Show information about the program or a specific items for an option.");
-    public final Token ListToken = new Token("search", "Searches all the items in the system.");
+    public final Token addToken = new Token("add", "Add a new item to the system.");
+    public final Token removeToken = new Token("delete", "Remove an item from the system.");
+    public final Token editToken = new Token("edit", "Edit an existing item in the system.");
+    public final Token helpToken = new Token("help", "Show information about the program or a specific items for an option.");
+    public final Token listToken = new Token("list", "List all items in the system.");
+    public final Token searchToken = new Token("search", "Search for an item in the system.");
 
-    private final List<Token> tokens = List.of(AddToken, EditToken, HelpToken, ListToken, RemoveToken);
+    private final List<Token> tokens = List.of(addToken, editToken, helpToken, listToken, searchToken, removeToken);
     private final Map<String, ControllerCommand> controllerCommandsMap = new HashMap<>();
     private final Map<String, Token> tokensMap = TokenMapGenerator.generateMap(tokens);
     private final Injector injector;
@@ -35,16 +36,12 @@ public class MainEntryController implements EntryController
 
 
     @Override
-    public List<Token> getCommands() {
-        return tokens;
-//        return List.of(new Token("collaborators", "c", "Manage collaborators info."),
-//                new Token("projects", "p", "Manage projects info."),
-//                new Token("sprints", "s", "Manage sprints info."),
-//                new Token("tasks", "t",  "Manage tasks info."));
+    public Token[] getCommands() {
+        return tokens.toArray(Token[]::new);
     }
 
     @Override
-    public String askForConfirmation(String message) {
+    public String askForInput(String message) {
         return view.askForInput(message);
     }
 
@@ -76,7 +73,7 @@ public class MainEntryController implements EntryController
     @Override
     public String resolveArgs(String[] args) {
         if (args.length > 0) {
-            Command helpCommand = null;
+            Token helpCommand = null;
             ControllerCommand controllerCommand = null;
             Token actionToken = null;
 
@@ -85,12 +82,12 @@ public class MainEntryController implements EntryController
                 if (tokensMap.containsKey(arg)) {
                     Token option = tokensMap.get(arg);
 
-                    if (option == HelpToken) {
+                    if (option == helpToken) {
                         if (helpCommand != null) {
                             return "Help command was entered more than one time";
                         }
 
-                        helpCommand = (Command) option;
+                        helpCommand = option;
                     } else {
                         if (actionToken != null) {
                             return "Only one command that is not the help command was expected.";
@@ -119,7 +116,8 @@ public class MainEntryController implements EntryController
                         ModelController childController = injector.getInstance(Key.get(controllerClass));
                         return childController.resolveArgs(argsForController.toArray(String[]::new));
                     } catch (Exception ex) {
-                        return "An error occurred: \n" + ex;
+                        ex.printStackTrace();
+                        return "";
                     }
                 } else if (helpCommand == null && args.length > 1) {
                     return String.format(
@@ -136,10 +134,5 @@ public class MainEntryController implements EntryController
     public void registerControllerOption(String key, String description, Class<? extends ModelController> controllerType) {
         ControllerCommand option = new ControllerCommand(key, description, controllerType);
         controllerCommandsMap.put(key, option);
-    }
-
-    @Override
-    public void selectOption(int optionIndex) {
-
     }
 }

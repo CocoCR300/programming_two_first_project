@@ -2,6 +2,7 @@ package com.una.programming_two_first_project.formatter;
 
 import com.google.inject.Inject;
 import com.una.programming_two_first_project.model.Project;
+import com.una.programming_two_first_project.util.StringUtils;
 
 public class ProjectFormatter extends BaseFormatter<Project>
 {
@@ -22,21 +23,21 @@ public class ProjectFormatter extends BaseFormatter<Project>
             sprintsInfo = String.format("Sprints:\n%s", sprintFormatter.formatMany(project.sprints, FORMAT_MINIMUM, 0));
         }
 
-        return indent(
+        return StringUtils.indent(
                 String.format("""
               [Project code: %s]
                 Name:       %s
                 Start date: %s
                 End date:   %s
-                %s""", project.code, project.name, defaultDateTimeFormatter.format(project.startDateTime),
-                defaultDateTimeFormatter.format(project.endDateTime), sprintsInfo),
+                %s""", project.getCode(), project.name, defaultDateFormatter.format(project.startDate),
+                defaultDateFormatter.format(project.endDate), sprintsInfo),
                 indent);
     }
 
     @Override
     public String formatMinimum(Project project, int indent) {
-        return indent(String.format("[Project code: %s] %s\n  Start date: %\n  End date:   %s", project.code,
-                project.name, defaultDateTimeFormatter.format(project.startDateTime),
-                defaultDateTimeFormatter.format(project.endDateTime)), indent);
+        return StringUtils.indent(String.format("[Project code: %s] %s\n  Start date: %s\n  End date:   %s", project.getCode(),
+                project.name, defaultDateFormatter.format(project.startDate),
+                defaultDateFormatter.format(project.endDate)), indent);
     }
 }

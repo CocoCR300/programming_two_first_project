@@ -1,14 +1,11 @@
 package com.una.programming_two_first_project;
 
+import com.google.gson.Gson;
 import com.google.inject.*;
-import com.una.programming_two_first_project.controller.CollaboratorController;
-import com.una.programming_two_first_project.controller.DepartmentController;
-import com.una.programming_two_first_project.controller.EntryController;
-import com.una.programming_two_first_project.model.Department;
-import com.una.programming_two_first_project.service.DataStore;
+import com.una.programming_two_first_project.controller.*;
 import com.una.programming_two_first_project.view.MainView;
 
-import java.io.Console;
+import java.time.LocalDate;
 
 public class Application
 {
@@ -26,6 +23,9 @@ public class Application
         EntryController controller = injector.getInstance(EntryController.class);
         controller.registerControllerOption("collaborator", "", CollaboratorController.class);
         controller.registerControllerOption("department", "", DepartmentController.class);
+        controller.registerControllerOption("project", "", ProjectController.class);
+        controller.registerControllerOption("sprint", "", SprintController.class);
+        controller.registerControllerOption("task", "", TaskController.class);
 
         MainView view = injector.getInstance(MainView.class);
         view.sendArgs(args);

@@ -1,8 +1,9 @@
 package com.una.programming_two_first_project.model;
 
-import com.una.programming_two_first_project.annotation.ForeignKey;
-import com.una.programming_two_first_project.annotation.InverseProperty;
-import com.una.programming_two_first_project.annotation.PrimaryKey;
+import com.una.programming_two_first_project.data_store.Model;
+import com.una.programming_two_first_project.data_store.annotation.ForeignKey;
+import com.una.programming_two_first_project.data_store.annotation.InverseProperty;
+import com.una.programming_two_first_project.data_store.annotation.PrimaryKey;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -14,7 +15,7 @@ public class Collaborator implements Model {
     public final transient Department department;
     @InverseProperty(relationModelClass = Task.class, relationModelRelationIdFieldName = "collaboratorId",
                      relationModelRelationFieldName = "collaborator")
-    public final List<Task> tasks;
+    public final transient List<Task> tasks;
     public final String emailAddress, name, lastName, telephoneNumber;
     @ForeignKey(relationModelClass = Department.class, relationFieldName = "department")
     public final String departmentId;

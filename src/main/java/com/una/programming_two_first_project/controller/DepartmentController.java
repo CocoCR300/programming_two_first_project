@@ -3,30 +3,26 @@ package com.una.programming_two_first_project.controller;
 import com.google.inject.Inject;
 import com.una.programming_two_first_project.model.*;
 import com.una.programming_two_first_project.formatter.CollaboratorFormatter;
-import com.una.programming_two_first_project.service.DataStore;
+import com.una.programming_two_first_project.data_store.DataStore;
 import com.una.programming_two_first_project.formatter.DepartmentFormatter;
 import com.una.programming_two_first_project.formatter.Formatter;
 import com.una.programming_two_first_project.util.ArgsValidator;
 import com.una.programming_two_first_project.util.EntityCreator;
 import com.una.programming_two_first_project.util.TokenResolver;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Stream;
 
 public class DepartmentController extends BaseModelController<Department>
 {
-    private final Option commandNameOption = new Option("command-name", "n", "");
-    private final Command<String> helpCommand = new Command<>("help", "", this::getHelp,
-            new Option[] { commandNameOption }, null);
+    private final CollaboratorFormatter collaboratorFormatter;
 
-    private final Option collaboratorIdsOption = new ConvertibleArgumentOption("collaborator-ids", "c", "",
-            ArgsValidator::isCommaSeparatedList);
-    private final Option idOption = new ConvertibleArgumentOption("id", "i", "",
+    private final Option collaboratorIdsOption = new ConvertibleArgumentOption<String>("collaborator-ids",
+            "c", "", ArgsValidator::isCommaSeparatedList);
+    private final Option idOption = new ConvertibleArgumentOption<String>("id", "i", "",
             ArgsValidator::isNotBlank);
-    private final Option nameOption = new ConvertibleArgumentOption("name", "n", "",
+    private final Option nameOption = new ConvertibleArgumentOption<String>("name", "n", "",
             ArgsValidator::isNotBlank);
     private final Command<Map<String, String>> addCommand = new Command<>("add", "", this::add,
             new Option[] { nameOption },
@@ -40,11 +36,8 @@ public class DepartmentController extends BaseModelController<Department>
     private final Command<Map<String, String>> editCommand = new Command<>("edit", "", this::edit,
             new Option[]{ idOption },
             new Option[] { nameOption, collaboratorIdsOption, addCollaboratorsOption, removeCollaboratorsOption });
-    private final Command<Map<String, String>> searchCommand = new Command<>("search", "", this::search,
-            null, new Option[] { idOption });
-
-    private final List<Command> commands = List.of(addCommand, deleteCommand, searchCommand);
-    private final CollaboratorFormatter collaboratorFormatter;
+    private final Command<String> searchCommand = new Command<>("search", "", this::search,
+            new Option[] { idOption }, null);
 
     @Inject
     public DepartmentController(DataStore dataStore, DepartmentFormatter departmentFormatter,
@@ -52,6 +45,72 @@ public class DepartmentController extends BaseModelController<Department>
                                 TokenResolver tokenResolver) {
         super(Department.class, dataStore, departmentFormatter, entryController, tokenResolver);
         this.collaboratorFormatter = collaboratorFormatter;
+
+        commands.put(addCommand.name, addCommand);
+        commands.put(deleteCommand.name, deleteCommand);
+        commands.put(editCommand.name, editCommand);
+        commands.put(searchCommand.name, searchCommand);
+    }
+
+    private String edit(Map<String, String> argsByOptionName) {
+        String departmentId = argsByOptionName.get(idOption.name);
+        Optional<Department> possibleExistingInstance = dataStore.get(Department.class, departmentId).unwrap();
+
+        if (possibleExistingInstance.isPresent()) {
+            Department existingInstance = possibleExistingInstance.get();
+
+            Result<Map<String, Object>, String> result = tokenResolver
+                    .mapCommandArgsToModelFields(editCommand, Department.class, argsByOptionName, existingInstance)
+                    .mapErr(e -> {
+                        // TODO
+                        return "";
+                    });
+            return (String) result.andThen(fieldMappings ->
+                    tokenResolver.checkIdListOption(fieldMappings, argsByOptionName, collaboratorIdsOption, addCollaboratorsOption,
+                            removeCollaboratorsOption, existingInstance.collaborators).mapErr(e -> {
+                                String errorType = e.x();
+
+                                if (errorType.equals(TokenResolver.INVALID_ID_LIST_OPTION_COMBINATION)) {
+                                    return "add-collaborators and remove-collaborators options cannot be provided both at the same time.";
+                                } else if (errorType.equals(TokenResolver.ID_IN_OPTION_LIST_NOT_RELATED)) {
+                                    return String.format("Collaborator with ID '%s' is not in this department",
+                                            e.y()[0]);
+                                }
+
+                                return "";
+                    })).map(fieldMappings -> {
+                Department newInstance = EntityCreator.newInstance(Department.class, fieldMappings).unwrap();
+                // TODO: Unwrapping possible raw error message with unwrapSafe()
+                return Result.unwrapSafe(dataStore
+                        .update(newInstance, false)
+                        .map(c -> {
+                            Result<Integer, Exception> commitResult = dataStore.commitChanges();
+                            return commitResult.mapOrElse(i -> "Operation completed successfully.",
+                                    e -> "An error occurred. Please contact the developers.");
+                        }));
+            }).unwrapSafe();
+        }
+
+        return String.format("A department with ID '%s' does not exist.", departmentId);
+    }
+
+    private String search(String id) {
+        return dataStore
+                .get(Department.class, id)
+                .unwrap()
+                .map(this::formatEntity)
+                .orElse(String.format("There is no department with ID '%s'.", id));
+    }
+
+    @Override
+    protected Result<Map<String, Object>, String> verifyFieldMappings(Map<String, Object> fieldMappings) {
+        return Result.ok(fieldMappings);
+    }
+
+    @Override
+    protected String getExampleCommand(String commandName) {
+        // TODO
+        return "";
     }
 
     @Override
@@ -71,7 +130,7 @@ public class DepartmentController extends BaseModelController<Department>
             String collaboratorsInfo = collaboratorFormatter.formatMany(department.collaborators, Formatter.FORMAT_MINIMUM, 4);
             String departmentsInfo = formatter.formatMany(departmentsToChoose, Formatter.FORMAT_MINIMUM, 4);
 
-            String confirmation = askForConfirmation(String.format("""
+            String confirmation = askForInput(String.format("""
                         Deleting this department will affect the following collaborators:
                         %s
                         You can type 'Y' to proceed with the deletion, 'N' to stop this action or provide a new
@@ -99,65 +158,10 @@ public class DepartmentController extends BaseModelController<Department>
                             l -> super.delete(id),
                             e -> "An error occurred. Please contact the developers.");
                 } else {
-                    confirmation = askForConfirmation("Option was invalid or there was no department with the entered ID.\nTry again: ");
+                    confirmation = askForInput("Option was invalid or there was no department with the entered ID.\nTry again: ");
                 }
             } while (true);
         }
-    }
-
-    private String edit(Map<String, String> argsByOptionName) {
-        String departmentId = argsByOptionName.get(idOption.name);
-        Optional<Department> possibleExistingInstance = dataStore.get(Department.class, departmentId).unwrap();
-
-        if (possibleExistingInstance.isPresent()) {
-            Department existingInstance = possibleExistingInstance.get();
-
-            Result<Map<String, Object>, Tuple<String, String[]>> result = tokenResolver.mapCommandArgsToModelFields(editCommand, Department.class, argsByOptionName, existingInstance);
-            return (String) result.map(fieldMappings -> {
-                List<Collaborator> selectedCollaborators;
-                if ((selectedCollaborators = (List<Collaborator>) fieldMappings.get(collaboratorIdsOption.name)) != null) {
-                    List<Collaborator> currentCollaborators = existingInstance.collaborators;
-                    List<Collaborator> newCollaborators;
-                    boolean addCollaborators = argsByOptionName.containsKey(addCollaboratorsOption.name),
-                            removeCollaborators = argsByOptionName.containsKey(removeCollaboratorsOption.name);
-
-                    if (addCollaborators && removeCollaborators) {
-                        return "add-collaborators and remove-collaborators options cannot be provided both at the same time.";
-                    } else if (!addCollaborators && !removeCollaborators) {
-                        fieldMappings.replace(collaboratorIdsOption.name, selectedCollaborators);
-                    } else {
-                        if (addCollaborators) {
-                            newCollaborators = Stream
-                                    .concat(currentCollaborators.stream(), selectedCollaborators.stream())
-                                    .distinct()
-                                    .toList();
-                        } else {
-                            newCollaborators = new ArrayList<>(currentCollaborators);
-
-                            for (Collaborator collaborator : selectedCollaborators) {
-                                if (!newCollaborators.remove(collaborator)) {
-                                    return String.format("Collaborator with ID '%s' is not in this department",
-                                            collaborator.id);
-                                }
-                            }
-                        }
-
-                        fieldMappings.replace(collaboratorIdsOption.name, newCollaborators);
-                    }
-                }
-
-                Department newInstance = EntityCreator.newInstance(Department.class, fieldMappings).unwrap();
-                return dataStore
-                        .update(newInstance, false)
-                        .map(c -> {
-                            Result<Integer, Exception> commitResult = dataStore.commitChanges();
-                            return commitResult.mapOrElse(i -> "Operation completed successfully.",
-                                    e -> "An error occurred. Please contact the developers.");
-                        }).unwrapSafe();
-            }).unwrapSafe();
-        }
-
-        return String.format("A department with ID '%s' does not exist.", departmentId);
     }
 
     @Override
@@ -166,27 +170,7 @@ public class DepartmentController extends BaseModelController<Department>
     }
 
     @Override
-    public Command<String> getHelpCommand() {
-        return helpCommand;
-    }
-
-    @Override
-    public List<Command> getCommands() {
-        return commands;
-    }
-
-    @Override
     public String getCommandInfo(String command) {
         return null;
-    }
-
-    @Override
-    public String getHelp(String tokenName) {
-        return null;
-    }
-
-    @Override
-    public void selectOption(int optionIndex) {
-
     }
 }

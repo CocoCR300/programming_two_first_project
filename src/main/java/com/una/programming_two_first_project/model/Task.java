@@ -1,7 +1,8 @@
 package com.una.programming_two_first_project.model;
 
-import com.una.programming_two_first_project.annotation.ForeignKey;
-import com.una.programming_two_first_project.annotation.PrimaryKey;
+import com.una.programming_two_first_project.data_store.Model;
+import com.una.programming_two_first_project.data_store.annotation.ForeignKey;
+import com.una.programming_two_first_project.data_store.annotation.PrimaryKey;
 
 public class Task implements Model
 {
@@ -10,8 +11,7 @@ public class Task implements Model
     @ForeignKey(relationModelClass = Collaborator.class, relationFieldName = "collaborator")
     public final String collaboratorId;
     public final String description, name, neededResources;
-    @PrimaryKey
-    public final String id;
+    @PrimaryKey public final String id;
     @ForeignKey(relationModelClass = Sprint.class, relationFieldName = "sprint")
     public final String sprintId;
 

@@ -3,6 +3,7 @@ package com.una.programming_two_first_project.formatter;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.una.programming_two_first_project.model.Department;
+import com.una.programming_two_first_project.util.StringUtils;
 
 @Singleton
 public class DepartmentFormatter extends BaseFormatter<Department>
@@ -24,7 +25,7 @@ public class DepartmentFormatter extends BaseFormatter<Department>
             collaboratorsInfo = String.format("Collaborators:\n%s", collaboratorFormatter.formatMany(department.collaborators, FORMAT_MINIMUM, 0));
         }
 
-        return indent(
+        return StringUtils.indent(
                 String.format("""
               [Department ID: %s]
                 Name:         %s
@@ -34,6 +35,6 @@ public class DepartmentFormatter extends BaseFormatter<Department>
 
     @Override
     public String formatMinimum(Department department, int indent) {
-        return indent(String.format("[Department ID: %s] %s", department.id, department.name), indent);
+        return StringUtils.indent(String.format("[Department ID: %s] %s", department.id, department.name), indent);
     }
 }

@@ -3,6 +3,7 @@ package com.una.programming_two_first_project.formatter;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.una.programming_two_first_project.model.Task;
+import com.una.programming_two_first_project.util.StringUtils;
 
 @Singleton
 public class TaskFormatter extends BaseFormatter<Task>
@@ -24,7 +25,7 @@ public class TaskFormatter extends BaseFormatter<Task>
             sprintInfo = "This task is not in any sprint.";
         }
 
-        return indent(
+        return StringUtils.indent(
                 String.format("""
                       [Task ID: %s]
                         Name:               %s
@@ -45,6 +46,6 @@ public class TaskFormatter extends BaseFormatter<Task>
             sprintInfo = "This task is not in any sprint.";
         }
 
-        return indent(String.format("[Task ID: %s] %s\n  %s", task.id, task.name, sprintInfo), indent);
+        return StringUtils.indent(String.format("[Task ID: %s] %s\n  %s", task.id, task.name, sprintInfo), indent);
     }
 }

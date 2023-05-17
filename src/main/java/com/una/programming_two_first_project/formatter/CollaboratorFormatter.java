@@ -3,6 +3,7 @@ package com.una.programming_two_first_project.formatter;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.una.programming_two_first_project.model.Collaborator;
+import com.una.programming_two_first_project.util.StringUtils;
 
 @Singleton
 public class CollaboratorFormatter extends BaseFormatter<Collaborator>
@@ -31,7 +32,7 @@ public class CollaboratorFormatter extends BaseFormatter<Collaborator>
             tasksInfo = String.format("Tasks:\n%s", taskFormatter.formatMany(collaborator.tasks, FORMAT_MINIMUM, 4));
         }
 
-        return indent(
+        return StringUtils.indent(
                 String.format("""
                       [Collaborator ID: %s]
                         Name:              %s
@@ -49,7 +50,7 @@ public class CollaboratorFormatter extends BaseFormatter<Collaborator>
     }
 
     public String formatMinimum(Collaborator collaborator, int indent) {
-        return indent(
+        return StringUtils.indent(
                 String.format("[Collaborator ID: %s] %s %s\n  %s",
                         collaborator.id, collaborator.name, collaborator.lastName,
                         String.format("This collaborator is %s", collaborator.isActive ? "active" : "inactive")),

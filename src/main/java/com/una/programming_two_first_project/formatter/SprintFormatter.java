@@ -2,6 +2,7 @@ package com.una.programming_two_first_project.formatter;
 
 import com.google.inject.Inject;
 import com.una.programming_two_first_project.model.Sprint;
+import com.una.programming_two_first_project.util.StringUtils;
 
 public class SprintFormatter extends BaseFormatter<Sprint>
 {
@@ -30,16 +31,16 @@ public class SprintFormatter extends BaseFormatter<Sprint>
             tasksInfo = String.format("Tasks:\n%s", taskFormatter.formatMany(sprint.tasks, FORMAT_MINIMUM, 4));
         }
 
-        return indent(
+        return StringUtils.indent(
                 String.format("""
-                      [Sprint ID: %s]
+                      [Sprint code: %s | ID: %s]
                         Number:                 %s
                         Start date and time:    %s
                         End date and time:      %s
                         %s
                         %s""",
-                        sprint.id, sprint.number, defaultDateTimeFormatter.format(sprint.startDateTime),
-                        defaultDateTimeFormatter.format(sprint.endDateTime),
+                        sprint.getCode(), sprint.getId(), sprint.number, defaultDateFormatter.format(sprint.startDate),
+                        defaultDateFormatter.format(sprint.endDate),
                         projectInfo, tasksInfo),
                 indent);
     }
@@ -54,8 +55,8 @@ public class SprintFormatter extends BaseFormatter<Sprint>
             projectInfo = "This sprint is not in any project.";
         }
 
-        return indent(String.format("[Sprint ID: %s]\n  Start: %s\n  End:   %s\n  %s",
-                sprint.id, defaultDateTimeFormatter.format(sprint.startDateTime),
-                defaultDateTimeFormatter.format(sprint.endDateTime), projectInfo), indent);
+        return StringUtils.indent(String.format("[Sprint code: %s | ID: %s]\n  Start: %s\n  End:   %s\n  %s",
+                sprint.getCode(), sprint.getId(), defaultDateFormatter.format(sprint.startDate),
+                defaultDateFormatter.format(sprint.endDate), projectInfo), indent);
     }
 }

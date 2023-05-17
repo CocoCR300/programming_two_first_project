@@ -1,4 +1,4 @@
-package com.una.programming_two_first_project.annotation;
+package com.una.programming_two_first_project.data_store.annotation;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

@@ -6,6 +6,6 @@ import java.util.List;
 
 public interface ModelController extends Controller
 {
-    List<Command> getCommands();
+    Command[] getCommands();
     String getCommandInfo(String command);
 }

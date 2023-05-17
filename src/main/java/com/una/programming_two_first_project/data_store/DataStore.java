@@ -1,6 +1,5 @@
-package com.una.programming_two_first_project.service;
+package com.una.programming_two_first_project.data_store;
 
-import com.una.programming_two_first_project.model.Model;
 import com.una.programming_two_first_project.model.Result;
 
 import java.util.List;
