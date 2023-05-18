@@ -101,10 +101,8 @@ public class TokenResolver
     }
 
     public Result<Map<String, Object>, Tuple<String, String[]>> checkIdListOption(Map<String, Object> fieldMappings,
-                                                                 Map<String, String> argsByOptionName,
-                                                                 Option idListOption, Option addEntitiesOption,
-                                                                 Option removeEntitiesOption,
-                                                                 List<? extends Model> existingInstanceRelatedEntities) {
+            Map<String, String> argsByOptionName, Option idListOption, Option addEntitiesOption,
+            Option removeEntitiesOption, List<? extends Model> existingInstanceRelatedEntities) {
         List<Model> selectedEntities;
         if ((selectedEntities = (List<Model>) fieldMappings.get(idListOption.name)) != null) {
             List<Model> newEntities;
@@ -144,7 +142,6 @@ public class TokenResolver
                                                                                              Map<String, String> argsByOptionName,
                                                                                              T existingEntity) {
         Stream<Field> modelFields = Arrays.stream(modelClass.getFields());
-
         Stream<Result<Tuple<String, Object>, Tuple<String, String[]>>> mappedArgs = modelFields.map(f -> {
             String fieldName = f.getName();
             StringBuilder optionNameFromFieldNameBuilder = new StringBuilder(fieldName);
@@ -194,9 +191,9 @@ public class TokenResolver
                     }
 
                     if (nonExistingIds.size() != 0) {
-                        String relatedModelNamePlural = String.format("%ss", collectionFieldModelClass.getSimpleName().toLowerCase());
-                        nonExistingIds.add(0, relatedModelNamePlural);
-                        return Result.err(tuple(SOME_IDS_DO_NOT_EXIST, new String[]{ relatedModelNamePlural, String.join(", ", nonExistingIds) }));
+                        String relatedModelName = String.format("%s", collectionFieldModelClass.getSimpleName().toLowerCase());
+                        nonExistingIds.add(0, relatedModelName);
+                        return Result.err(tuple(SOME_IDS_DO_NOT_EXIST, new String[]{ relatedModelName, String.join(", ", nonExistingIds) }));
                     }
 
                     valueForField = possibleEntities
@@ -262,126 +259,12 @@ public class TokenResolver
                         finalMap.putAll(result1.unwrap());
                         finalMap.putAll(result2.unwrap());
                         return finalMap;
-                });}
+                    });
+                }
         );
-
-//        Optional<Result<Object, String>> argsForCommand = mappedArgs.reduce((r1, r2) -> {
-//            Result<Object, String> combinedResult = r1.and(r2);
-//            return combinedResult.map(v2 -> {
-//                Tuple<String, Object> entry2 = (Tuple<String, Object>) v2;
-//                Object v1 = r1.unwrap();
-//
-//                Map<String, Object> map;
-//                if (Map.class.isAssignableFrom(v1.getClass())) {
-//                    map = (Map<String, Object>) v1;
-//                } else {
-//                    Tuple<String, Object> entry1 = (Tuple<String, Object>) v1;
-//                    map = new HashMap();
-//                    map.put(entry1.x(), entry1.y());
-//                }
-//
-//                map.put(entry2.x(), entry2.y());
-//                return map;
-//            });
-//        });
 
         // TODO: Is it possible to receive no arguments here? Do we have enough checks before this line?
         return mappedFieldValues;
-    }
-
-    public <T extends Model> Result<Object[], String> mapCommandArgsToConstructor(Command command,
-                                                                                  Constructor<T> modelConstructor,
-                                                                                  Map<String, Object> argsByOptionName,
-                                                                                  T existingEntity) {
-        // Better do this like "mapCommandArgsToModelFields", rework entity creation to access fields directly instead
-        // of using a parameterized constructor (create a EntityCreator class that works with the output of this method,
-        // the name is not so accurate, because it would also create new entities based on existing ones, like modify them).
-        // All of this in order to make it easier to work with list-type options (DepartmentController.collaboratorIds),
-        // in this situation, there is no constructor parameter for the collection fields, so we need to access the field
-        // directly, and Gson and others do this already, let's copy from them.
-        Stream<Parameter> constructorParameters = Arrays.stream(modelConstructor.getParameters());
-
-        Stream<Result<Object, String>> mappedArgs = constructorParameters.map(p -> {
-            String constructorParameterName = p.getName();
-            StringBuilder builder = new StringBuilder(constructorParameterName);
-
-            for (int i = 0; i < builder.length(); ++i) {
-                char currentChar = builder.charAt(i);
-                if (Character.isUpperCase(currentChar)) {
-                    builder.replace(i, i + 1, String.valueOf(Character.toLowerCase(currentChar)));
-                    builder.insert(i, '-');
-                }
-            }
-
-            Object valueForArg = null;
-            String argumentOptionName;
-            if (Model.class.isAssignableFrom(p.getType())) {
-                builder.append("-id");
-                argumentOptionName = builder.toString();
-                String entityId = (String) argsByOptionName.get(argumentOptionName);
-
-                if (entityId != null) {
-                    Optional<Model> possibleEntity = dataStore.get((Class<Model>) p.getType(), entityId).unwrap();
-
-                    if (possibleEntity.isEmpty()) {
-                        return Result.err(String.format("There is no %s with ID: %s", p.getType().getSimpleName().toLowerCase(), entityId));
-                    }
-
-                    valueForArg = possibleEntity.get();
-                }
-            } else {
-                argumentOptionName = builder.toString();
-                valueForArg = argsByOptionName.get(argumentOptionName);
-
-                if (valueForArg == null) { // Option for constructor parameter was not provided
-                    if (existingEntity != null) {
-                        Class<T> modelClass = (Class<T>) existingEntity.getClass();
-                        try {
-                            Field modelField = modelClass.getField(p.getName());
-                            modelField.setAccessible(true);
-                            valueForArg = modelField.get(existingEntity);
-                        } catch (Exception ex) {
-                            // TODO
-                        }
-                    } else {
-                        @SuppressWarnings("unchecked") // Type erasure doing its thing
-                        Optional<Option> possibleOption = command.getOption(argumentOptionName);
-                        Option option;
-
-                        // Already checked that "command.isRequired(option = possibleOption.get()).get()" will be present
-                        //noinspection OptionalGetWithoutIsPresent
-                        if (possibleOption.isPresent() && (Boolean) command.isRequired(option = possibleOption.get()).get()) {
-                            return Result.err(String.format(REQUIRED_OPTION_NOT_PRESENT, option.name));
-                        }
-                        valueForArg = Defaults.getDefault(p.getType());
-                    }
-                }
-            }
-
-            return Result.ok(valueForArg);
-        });
-
-        Optional<Result<Object, String>> argsForCommand = mappedArgs.reduce((r1, r2) -> {
-            Result<Object, String> combinedResult = r1.and(r2);
-            return combinedResult.map(v2 -> {
-                Object v1 = r1.unwrap();
-
-                List<Object> list;
-                if (List.class.isAssignableFrom(v1.getClass())) {
-                    list = (List<Object>) v1;
-                    list.add(v2);
-                } else {
-                    list = new ArrayList<>();
-                    list.add(v1);
-                    list.add(v2);
-                }
-
-                return list;
-            });
-        });
-
-        // TODO: Is it possible to receive no arguments here? Do we have enough checks before this line?
-        return argsForCommand.get().map(o -> ((List<Object>) o).toArray());
     }
 
     public Result<Tuple<Command, Map<String, Object>>, String> extractCommandAndArgs(
@@ -436,15 +319,5 @@ public class TokenResolver
         }
 
         return Optional.empty();
-    }
-
-    public @NotNull String[] extractOptionNames(String[] args) {
-        List<String> optionNames = new ArrayList<>();
-
-        for (int i = 0; i < args.length; ++i) {
-            extractOptionName(args[i]).ifPresent(optionNames::add);
-        }
-
-        return optionNames.toArray(String[]::new);
     }
 }

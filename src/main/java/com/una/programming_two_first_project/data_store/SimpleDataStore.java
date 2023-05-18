@@ -37,7 +37,7 @@ public class SimpleDataStore implements DataStore
 //    private final Map<String, Sprint> sprints;
 //    private final Map<String, Task> tasks;
     private final Map<String, ModelInfo<? extends Model>> modelInfoByKey;
-    private final Map<String, Optional<Map<String,? extends Model>>> entitiesByName;
+    private final Map<String, Map<String,? extends Model>> entitiesByName;
     private final String applicationDataFolderPath;
 
     @Inject
@@ -55,7 +55,7 @@ public class SimpleDataStore implements DataStore
 
         for (Class<? extends Model> modelClass : new Class[] { Collaborator.class, Department.class, Project.class, Sprint.class, Task.class }) {
             String modelKey = getModelKey(modelClass);
-            entitiesByName.put(modelKey, Optional.empty());
+            entitiesByName.put(modelKey, null);
 
             Field primaryKeyField = null;
             List<Field> foreignKeyFields = new ArrayList<>();
@@ -111,14 +111,15 @@ public class SimpleDataStore implements DataStore
     }
 
     private <T extends Model> Result<Map<String, T>, String> getAll(String modelKey) {
-        Optional<Map<String, ? extends Model>> map = entitiesByName.get(modelKey);
-
-        if (map == null) { // TODO: Is this possible at all now that this is private and the other getAll requires a subclass of Model?
+        if (!entitiesByName.containsKey(modelKey)) {
             return Result.err(DataStore.MODEL_NOT_FOUND);
         }
 
-        Map<String, T> newMap = (Map<String, T>) map.orElseGet(() -> loadEntities(modelKey));
-        return Result.ok(newMap);
+        Map<String, T> map = (Map<String, T>) entitiesByName.get(modelKey);
+        if (map == null) {
+            map = loadEntities(modelKey);
+        }
+        return Result.ok(map);
     }
 
     private String getModelKey(Class<? extends Model> modelClass) {
@@ -128,7 +129,7 @@ public class SimpleDataStore implements DataStore
     private <T extends Model> Map<String, T> loadEntities(String modelKey) {
         Gson gson = createGson();
         Map<String, T> entityMap = new HashMap<>();
-        entitiesByName.put(modelKey, Optional.of(entityMap));
+        entitiesByName.put(modelKey, entityMap);
 
         File entitiesFile = getModelFile(modelKey);
         if (!entitiesFile.exists()) {
@@ -399,9 +400,9 @@ public class SimpleDataStore implements DataStore
 
             try {
                 if (primaryKeyField.getType().equals(String.class)) {
-                    primaryKeyField.set(newEntity, UUID.randomUUID().toString());
+                    primaryKeyField.set(newEntity, UUID.randomUUID().toString().toUpperCase());
                 } else {
-                    Collection<T> entities = (Collection<T>) entitiesByName.get(modelKey).get().values();
+                    Collection<T> entities = (Collection<T>) entitiesByName.get(modelKey).values();
                     Number highestPrimaryKey = 0;
                     for (T entity : entities) {
                         Number currentPrimaryKey = (Number) primaryKeyField.get(entity);
@@ -609,9 +610,9 @@ public class SimpleDataStore implements DataStore
     public Result<Integer, Exception> commitChanges() {
         Gson gson = createGson();
 
-        for (Map.Entry<String, Optional<Map<String, ? extends Model>>> entry : entitiesByName.entrySet()) {
-            if (changesMadeTo(entry.getKey())) {
-                Map<String, ? extends Model> map = entry.getValue().get();
+        for (Map.Entry<String, Map<String, ? extends Model>> entry : entitiesByName.entrySet()) {
+            if (entry.getValue() != null && changesMadeTo(entry.getKey())) {
+                Map<String, ? extends Model> map = entry.getValue();
                 String modelKey = entry.getKey();
                 Object[] entities = map.values().toArray();
                 File entitiesFile = getModelFile(modelKey);

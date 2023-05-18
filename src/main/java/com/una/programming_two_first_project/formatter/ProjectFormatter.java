@@ -20,7 +20,7 @@ public class ProjectFormatter extends BaseFormatter<Project>
         if (project.sprints.isEmpty()) {
             sprintsInfo = "This project has no sprints.";
         } else {
-            sprintsInfo = String.format("Sprints:\n%s", sprintFormatter.formatMany(project.sprints, FORMAT_MINIMUM, 0));
+            sprintsInfo = String.format("Sprints:\n%s", sprintFormatter.formatMany(project.sprints, FORMAT_MINIMUM, 4));
         }
 
         return StringUtils.indent(

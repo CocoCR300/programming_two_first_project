@@ -7,6 +7,7 @@ import com.una.programming_two_first_project.model.*;
 import com.una.programming_two_first_project.data_store.DataStore;
 import com.una.programming_two_first_project.formatter.Formatter;
 import com.una.programming_two_first_project.util.ArgsValidator;
+import com.una.programming_two_first_project.util.ControllerBoilerplateHelper;
 import com.una.programming_two_first_project.util.EntityCreator;
 import com.una.programming_two_first_project.util.TokenResolver;
 import org.jetbrains.annotations.NotNull;
@@ -16,33 +17,37 @@ import java.util.*;
 
 public class SprintController extends BaseModelController<Sprint>
 {
-    private final Option commandNameOption = new Option("command-name", "n", "");
-    private final Command<String> helpCommand = new Command<>("help", "", this::getHelp,
-            new Option[] { commandNameOption }, null);
-
-    private final Option endDateOption = new ConvertibleArgumentOption<LocalDate>("end-date", "e", "",
+    private final Option endDateOption = new ConvertibleArgumentOption<LocalDate>("end-date", "e",
+            "Sprint end date. Must be before or the same day as its project's end date.",
             arg -> ArgsValidator.isNotBlank(arg).andThen(ArgsValidator::isDate));
-    private final Option idOption = new ConvertibleArgumentOption<String>("id", "i", "",
-            ArgsValidator::isNotBlank);
-    private final Option projectIdOption = new ConvertibleArgumentOption<String>("project-id", "p", "",
-            ArgsValidator::isNotBlank);
-    private final Option startDateOption = new ConvertibleArgumentOption<LocalDate>("start-date", "s", "",
+    private final Option idOption = new ConvertibleArgumentOption<String>("id", "i",
+            "Sprint ID, used when deleting a sprint, editing its information or searching for them.",
+            arg -> ArgsValidator.isNotBlank(arg).map(String::toUpperCase));
+    private final Option projectIdOption = new ConvertibleArgumentOption<String>("project-id", "p",
+            "The ID of the project in which this sprint is, or in which to search for sprints.",
+            arg -> ArgsValidator.isNotBlank(arg).map(String::toUpperCase));
+    private final Option startDateOption = new ConvertibleArgumentOption<LocalDate>("start-date", "s",
+            "Sprint start date. Must be after or the same day as its project's start date.",
             arg -> ArgsValidator.isNotBlank(arg).andThen(ArgsValidator::isDate));
-    private final Option taskIdsOption = new ConvertibleArgumentOption<String>("task-ids", "t", "",
-            ArgsValidator::isCommaSeparatedList);
+    private final Option taskIdsOption = new ConvertibleArgumentOption<String>("task-ids", "t",
+            "IDs of the tasks to assign to, add to (using 'add-tasks') or remove from (using 'remove-tasks') the sprint.",
+            arg -> ArgsValidator.isNotBlank(arg).map(String::toUpperCase));
     private final Command<Map<String, String>> addCommand = new Command<>("add", "", this::add,
             new Option[] { startDateOption, endDateOption },
             new Option[]{ projectIdOption, taskIdsOption });
     private final Command<String> deleteCommand = new Command<>("delete", "", this::delete,
             new Option[]{ idOption }, null);
 
-    private final Option addTasksOption = new SwitchOption("add-tasks", "a", "");
-    private final Option removeTasksOption = new SwitchOption("remove-tasks", "r", "");
+    private final Option addTasksOption = new SwitchOption("add-tasks", "a",
+            "Add the tasks corresponding to the IDs passed through 'task-ids' to this sprint instead of overwriting its current tasks. Does not require a value.");
+    private final Option removeTasksOption = new SwitchOption("remove-tasks", "r",
+            "Remove the tasks corresponding to the IDs passed through 'task-ids' from this sprint instead of overwriting its current tasks. Does not require a value.");
     private final Command<Map<String, String>> editCommand = new Command<>("edit", "", this::edit,
             new Option[]{ idOption },
             new Option[] { startDateOption, endDateOption, projectIdOption, taskIdsOption, addTasksOption, removeTasksOption });
 
-    private final Option codeOption = new ConvertibleArgumentOption<String>("code", "c", "",
+    private final Option codeOption = new ConvertibleArgumentOption<String>("code", "c",
+            "The code of the sprint to search for.",
             ArgsValidator::isNotBlank);
     private final Command<Map<String, String>> searchCommand = new Command<>("search", "", this::search,
             null, new Option[] { codeOption, idOption, projectIdOption });
@@ -69,10 +74,7 @@ public class SprintController extends BaseModelController<Sprint>
 
             Result<Map<String, Object>, String> result = tokenResolver
                     .mapCommandArgsToModelFields(editCommand, Sprint.class, argsByOptionName, existingInstance)
-                    .mapErr(e -> {
-                        // TODO
-                        return "";
-                    });
+                    .mapErr(e -> handleFieldMappingError(editCommand, e));
             return (String) result.andThen(fieldMappings ->
                     tokenResolver.checkIdListOption(fieldMappings, argsByOptionName, taskIdsOption, addTasksOption,
                             removeTasksOption, existingInstance.tasks).mapErr(e -> {
@@ -144,24 +146,33 @@ public class SprintController extends BaseModelController<Sprint>
         } else {
             Map<String, Sprint> allSprints = dataStore.getAll(Sprint.class).unwrap();
             List<Sprint> sprintsToChoose = allSprints.values().stream().filter(s -> s != sprint).toList();
-
             String tasksInfo = taskFormatter.formatMany(sprint.tasks, Formatter.FORMAT_MINIMUM, 4);
-            String sprintsInfo = formatter.formatMany(sprintsToChoose, Formatter.FORMAT_MINIMUM, 4);
+            String message;
 
-            String confirmation = askForInput(String.format("""
-                        Deleting this sprint will affect the following tasks:
-                        %s
+            if (sprintsToChoose.isEmpty()) {
+                message = "You can type 'Y' to proceed with the deletion, or 'N' to stop this action.\n";
+            } else {
+                String sprintsInfo = formatter.formatMany(sprintsToChoose, Formatter.FORMAT_MINIMUM, 4);
+                message = String.format("""
                         You can type 'Y' to proceed with the deletion, 'N' to stop this action or provide a new
                         sprint ID for the affected tasks from the following list:
+                        %s""", sprintsInfo);
+            }
+
+            String confirmation = askForInputLoop(String.format("""
+                        Deleting this sprint will affect the following tasks:
                         %s
-                        Choose an option:\s""", tasksInfo, sprintsInfo));
+                        %s
+                        Choose an option:\s""", tasksInfo, message),
+                    "Option was invalid or there was no sprint with the entered ID.\nTry again: ",
+                    arg -> {
+                        return arg.equalsIgnoreCase("Y") || arg.equalsIgnoreCase("N") ||
+                                (allSprints.containsKey(arg.toUpperCase()) && !arg.equalsIgnoreCase(sprint.id));
+                    });
             do {
                 String selectedOptionUppercase = confirmation.toUpperCase();
                 if (selectedOptionUppercase.equals("Y")) {
                     return super.delete(id);
-//                        Result<Integer, Exception> commitResult = dataStore.commitChanges();
-//                        return commitResult.mapOrElse(i -> "Operation completed successfully.",
-//                                e -> "An error occurred. Please contact the developers.");
                 } else if (selectedOptionUppercase.equals("N")) {
                     return "Operation was cancelled.";
                 } else if (allSprints.containsKey(confirmation)) {
@@ -214,6 +225,32 @@ public class SprintController extends BaseModelController<Sprint>
             }
         }
 
+        List<Task> tasks = (List<Task>) fieldMappings.get("tasks");
+        List<Task> conflictingTasks = ControllerBoilerplateHelper.checkAlreadyAssignedEntities(tasks, t -> t.sprint);
+        if (!conflictingTasks.isEmpty()) {
+            String conflictingTasksInfo = taskFormatter.formatMany(conflictingTasks, Formatter.FORMAT_MINIMUM, 2);
+
+            String confirmation = askForInputLoop(String.format("""
+                                The following tasks are already in a sprint:
+                                %s
+                                You can type 'Y' to overwrite this information and proceed with the action, or 'N' to stop it.
+                                Choose an option:\s""",
+                            conflictingTasksInfo),
+                    "Option was invalid.\nTry again: ",
+                    ControllerBoilerplateHelper::validateYesOrNoInput);
+
+            if (confirmation.equals("Y")) {
+                List<Task> newTasks = tasks
+                        .stream()
+                        .map(t -> t.collaborator == null ? t : new Task(t.id, t.name, t.description, null, t.sprint, t.neededResources))
+                        .toList();
+                dataStore.updateAll(Task.class, newTasks, false);
+                fieldMappings.put("tasks", newTasks);
+            } else {
+                return Result.err("Operation was cancelled.");
+            }
+        }
+
         return Result.ok(fieldMappings);
     }
 
@@ -221,10 +258,5 @@ public class SprintController extends BaseModelController<Sprint>
     protected String getExampleCommand(String commandName) {
         // TODO
         return "";
-    }
-
-    @Override
-    public String getCommandInfo(String command) {
-        return null;
     }
 }

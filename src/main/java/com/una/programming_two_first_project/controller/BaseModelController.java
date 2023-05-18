@@ -10,6 +10,7 @@ import com.una.programming_two_first_project.util.TokenResolver;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
+import java.util.function.Function;
 
 public abstract class BaseModelController<T extends Model> implements ModelController
 {
@@ -54,22 +55,14 @@ public abstract class BaseModelController<T extends Model> implements ModelContr
     protected abstract Result<Map<String, Object>, String> verifyFieldMappings(Map<String, Object> fieldMappings);
     protected abstract String getExampleCommand(String commandName);
 
+    protected Optional<T> getEntity(String id) {
+        return dataStore.get(modelClass, id).unwrap();
+    }
+
     protected String add(Map<String, String> argsByOptionName) {
         Result<Map<String, Object>, String> result = tokenResolver
                 .mapCommandArgsToModelFields(getAddCommand(), modelClass, argsByOptionName, null)
-                .mapErr(e -> {
-                    String errorType = e.x();
-                    String[] errorArguments = e.y();
-                    switch (errorType) {
-                        case TokenResolver.REQUIRED_OPTION_NOT_PRESENT:
-                            return String.format("'%s' option is required for add command", errorArguments[0]);
-                        case TokenResolver.ID_DOES_NOT_EXIST:
-                            return String.format("There is no %s with ID: %s", errorArguments[0], errorArguments[1]);
-                        case TokenResolver.SOME_IDS_DO_NOT_EXIST:
-                            return String.format("There are no %s with IDs: %s", errorArguments[0], errorArguments[1]);
-                    }
-
-                    return "";})
+                .mapErr(e -> handleFieldMappingError(getAddCommand(), e))
                 .andThen(this::verifyFieldMappings);
 
         return Result.unwrapSafe(result.map(fieldMappings -> {
@@ -82,15 +75,22 @@ public abstract class BaseModelController<T extends Model> implements ModelContr
             }, e -> {
                 if (e.equals(DataStore.ENTITY_ALREADY_EXISTS)) {
                     return String.format("A %s with ID '%s' already exists.", modelNameLowercase, entity.getId());
-                } else if (e.equals(DataStore.ENTITY_ALREADY_RELATED)) {
-                    // TODO: Wrong message
-                    return String.format("A %s in the ID list already has a %s assigned.",
-                            modelNameLowercase, e);
                 }
 
                 return "";
             });
         }));
+    }
+
+    protected String askForInputLoop(String message, String tryAgainMessage, Function<String, Boolean> validatorFunction) {
+        String input = askForInput(message);
+        do {
+            if (validatorFunction.apply(input)) {
+                return input;
+            }
+
+            input = askForInput(tryAgainMessage);
+        } while (true);
     }
 
     protected String delete(String id) {
@@ -101,6 +101,23 @@ public abstract class BaseModelController<T extends Model> implements ModelContr
                     i -> "Operation completed successfully.",
                     e -> "An error occurred. Please contact the developers.");
         }, e -> String.format("A %s with ID '%s' does not exist.", modelNameLowercase, id));
+    }
+
+    protected String handleFieldMappingError(Command command, Tuple<String, String[]> errorResultTuple) {
+        String errorType = errorResultTuple.x();
+        String[] errorArguments = errorResultTuple.y();
+
+        return switch (errorType) {
+            case TokenResolver.REQUIRED_OPTION_NOT_PRESENT ->
+                String.format("'%s' option is required for %s command", command.name, errorArguments[0]);
+
+            case TokenResolver.ID_DOES_NOT_EXIST ->
+                String.format("There is no %s with ID: %s", errorArguments[0], errorArguments[1]);
+
+            case TokenResolver.SOME_IDS_DO_NOT_EXIST ->
+                String.format("There are no %ss with IDs: %s", errorArguments[0], errorArguments[1]);
+            default -> "";
+        };
     }
 
     @Override
@@ -175,8 +192,11 @@ public abstract class BaseModelController<T extends Model> implements ModelContr
                 When writing values with a space between them, you must enclose the whole value in double quotes.""");
             }
 
-            helpBuilder.append("\n");
-            helpBuilder.append(StringUtils.indent(getExampleCommand(tokenName), 2));
+            String examples = getExampleCommand(tokenName);
+            if (examples.length() > 0) {
+                helpBuilder.append("\n");
+                helpBuilder.append(StringUtils.indent(examples, 2));
+            }
             return helpBuilder.toString();
         }
 

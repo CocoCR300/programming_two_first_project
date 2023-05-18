@@ -7,5 +7,4 @@ import java.util.List;
 public interface ModelController extends Controller
 {
     Command[] getCommands();
-    String getCommandInfo(String command);
 }

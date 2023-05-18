@@ -38,14 +38,6 @@ public class TaskFormatter extends BaseFormatter<Task>
 
     @Override
     public String formatMinimum(Task task, int indent) {
-        String sprintInfo;
-
-        if (task.sprint != null) {
-            sprintInfo = String.format("Sprint: %s", sprintFormatter.formatMinimum(task.sprint, 0));
-        } else {
-            sprintInfo = "This task is not in any sprint.";
-        }
-
-        return StringUtils.indent(String.format("[Task ID: %s] %s\n  %s", task.id, task.name, sprintInfo), indent);
+        return StringUtils.indent(String.format("[Task ID: %s] %s", task.id, task.name), indent);
     }
 }

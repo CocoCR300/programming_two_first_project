@@ -7,32 +7,34 @@ import com.una.programming_two_first_project.data_store.DataStore;
 import com.una.programming_two_first_project.formatter.DepartmentFormatter;
 import com.una.programming_two_first_project.formatter.Formatter;
 import com.una.programming_two_first_project.util.ArgsValidator;
+import com.una.programming_two_first_project.util.ControllerBoilerplateHelper;
 import com.una.programming_two_first_project.util.EntityCreator;
 import com.una.programming_two_first_project.util.TokenResolver;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 public class DepartmentController extends BaseModelController<Department>
 {
     private final CollaboratorFormatter collaboratorFormatter;
 
     private final Option collaboratorIdsOption = new ConvertibleArgumentOption<String>("collaborator-ids",
-            "c", "", ArgsValidator::isCommaSeparatedList);
-    private final Option idOption = new ConvertibleArgumentOption<String>("id", "i", "",
-            ArgsValidator::isNotBlank);
-    private final Option nameOption = new ConvertibleArgumentOption<String>("name", "n", "",
-            ArgsValidator::isNotBlank);
+            "c", "IDs of the collaborators to assign to, add to (using 'add-collaborators') or remove from (using 'remove-collaborators') the department.",
+            arg -> ArgsValidator.isNotBlank(arg).map(String::toUpperCase));
+    private final Option idOption = new ConvertibleArgumentOption<String>("id", "i",
+            "Department ID, used when deleting a department, editing its information or searching for them.",
+            arg -> ArgsValidator.isNotBlank(arg).map(String::toUpperCase));
+    private final Option nameOption = new ConvertibleArgumentOption<String>("name", "n",
+            "Department name.", ArgsValidator::isNotBlank);
     private final Command<Map<String, String>> addCommand = new Command<>("add", "", this::add,
-            new Option[] { nameOption },
-            new Option[] {collaboratorIdsOption });
+            new Option[] { nameOption }, new Option[] { collaboratorIdsOption });
 
     private final Command<String> deleteCommand = new Command<>("delete", "", this::delete,
             new Option[]{ idOption }, null);
 
-    private final Option addCollaboratorsOption = new SwitchOption("add-collaborators", "a", "");
-    private final Option removeCollaboratorsOption = new SwitchOption("remove-collaborators", "r", "");
+    private final Option addCollaboratorsOption = new SwitchOption("add-collaborators", "a",
+            "Add the collaborators corresponding to the IDs passed through 'collaborator-ids' to the department. Does not require a value.");
+    private final Option removeCollaboratorsOption = new SwitchOption("remove-collaborators", "r",
+            "Remove the collaborators corresponding to the IDs passed through 'collaborator-ids' from the department. Does not require a value.");
     private final Command<Map<String, String>> editCommand = new Command<>("edit", "", this::edit,
             new Option[]{ idOption },
             new Option[] { nameOption, collaboratorIdsOption, addCollaboratorsOption, removeCollaboratorsOption });
@@ -61,10 +63,7 @@ public class DepartmentController extends BaseModelController<Department>
 
             Result<Map<String, Object>, String> result = tokenResolver
                     .mapCommandArgsToModelFields(editCommand, Department.class, argsByOptionName, existingInstance)
-                    .mapErr(e -> {
-                        // TODO
-                        return "";
-                    });
+                    .mapErr(e -> handleFieldMappingError(editCommand, e));
             return (String) result.andThen(fieldMappings ->
                     tokenResolver.checkIdListOption(fieldMappings, argsByOptionName, collaboratorIdsOption, addCollaboratorsOption,
                             removeCollaboratorsOption, existingInstance.collaborators).mapErr(e -> {
@@ -104,6 +103,32 @@ public class DepartmentController extends BaseModelController<Department>
 
     @Override
     protected Result<Map<String, Object>, String> verifyFieldMappings(Map<String, Object> fieldMappings) {
+        List<Collaborator> collaborators = (List<Collaborator>) fieldMappings.get("collaborators");
+        List<Collaborator> conflictingCollaborators = ControllerBoilerplateHelper.checkAlreadyAssignedEntities(collaborators, c -> c.department);
+        if (!conflictingCollaborators.isEmpty()) {
+            String conflictingTasksInfo = collaboratorFormatter.formatMany(conflictingCollaborators, Formatter.FORMAT_MINIMUM, 2);
+
+            String confirmation = askForInputLoop(String.format("""
+                                The following collaborators are already in a department:
+                                %s
+                                You can type 'Y' to overwrite this information and proceed with the action, or 'N' to stop it.
+                                Choose an option:\s""",
+                            conflictingTasksInfo),
+                    "Option was invalid.\nTry again: ",
+                    ControllerBoilerplateHelper::validateYesOrNoInput);
+
+            if (confirmation.equals("Y")) {
+                List<Collaborator> newCollaborators = collaborators
+                        .stream()
+                        .map(c -> c.department == null ? c : new Collaborator(c.id, c.name, c.lastName, c.telephoneNumber, c.emailAddress, null, c.isActive))
+                        .toList();
+                dataStore.updateAll(Collaborator.class, newCollaborators, false);
+                fieldMappings.put("collaborators", newCollaborators);
+            } else {
+                return Result.err("Operation was cancelled.");
+            }
+        }
+
         return Result.ok(fieldMappings);
     }
 
@@ -128,22 +153,30 @@ public class DepartmentController extends BaseModelController<Department>
             List<Department> departmentsToChoose = allDepartments.values().stream().filter(d -> d != department).toList();
 
             String collaboratorsInfo = collaboratorFormatter.formatMany(department.collaborators, Formatter.FORMAT_MINIMUM, 4);
-            String departmentsInfo = formatter.formatMany(departmentsToChoose, Formatter.FORMAT_MINIMUM, 4);
+            String message;
 
-            String confirmation = askForInput(String.format("""
-                        Deleting this department will affect the following collaborators:
-                        %s
+            if (departmentsToChoose.isEmpty()) {
+                message = "You can type 'Y' to proceed with the deletion, or 'N' to stop this action.\n";
+            } else {
+                String departmentsInfo = formatter.formatMany(departmentsToChoose, Formatter.FORMAT_MINIMUM, 4);
+                message = String.format("""
                         You can type 'Y' to proceed with the deletion, 'N' to stop this action or provide a new
                         department ID for the affected collaborators from the following list:
+                        %s""", departmentsInfo);
+            }
+
+            String confirmation = askForInputLoop(String.format("""
+                        Deleting this project will affect the following sprints:
                         %s
-                        Choose an option:\s""", collaboratorsInfo, departmentsInfo));
+                        %s
+                        Choose an option:\s""", collaboratorsInfo, message),
+                    "Option was invalid or there was no department with the entered ID.\nTry again: ",
+                    arg -> arg.equalsIgnoreCase("Y") || arg.equalsIgnoreCase("N") ||
+                            (allDepartments.containsKey(arg.toUpperCase()) && !arg.equalsIgnoreCase(department.id)));
             do {
                 String selectedOptionUppercase = confirmation.toUpperCase();
                 if (selectedOptionUppercase.equals("Y")) {
                     return super.delete(id);
-//                        Result<Integer, Exception> commitResult = dataStore.commitChanges();
-//                        return commitResult.mapOrElse(i -> "Operation completed successfully.",
-//                                e -> "An error occurred. Please contact the developers.");
                 } else if (selectedOptionUppercase.equals("N")) {
                     return "Operation was cancelled.";
                 } else if (allDepartments.containsKey(confirmation)) {
@@ -167,10 +200,5 @@ public class DepartmentController extends BaseModelController<Department>
     @Override
     public Command getAddCommand() {
         return addCommand;
-    }
-
-    @Override
-    public String getCommandInfo(String command) {
-        return null;
     }
 }

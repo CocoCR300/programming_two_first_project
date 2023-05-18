@@ -34,9 +34,9 @@ public class SprintFormatter extends BaseFormatter<Sprint>
         return StringUtils.indent(
                 String.format("""
                       [Sprint code: %s | ID: %s]
-                        Number:                 %s
-                        Start date and time:    %s
-                        End date and time:      %s
+                        Number:        %s
+                        Start date:    %s
+                        End date:      %s
                         %s
                         %s""",
                         sprint.getCode(), sprint.getId(), sprint.number, defaultDateFormatter.format(sprint.startDate),
@@ -47,16 +47,8 @@ public class SprintFormatter extends BaseFormatter<Sprint>
 
     @Override
     public String formatMinimum(Sprint sprint, int indent) {
-        String projectInfo;
-
-        if (sprint.project != null) {
-            projectInfo = String.format("Project: %s", projectFormatter.formatMinimum(sprint.project, 0));
-        } else {
-            projectInfo = "This sprint is not in any project.";
-        }
-
-        return StringUtils.indent(String.format("[Sprint code: %s | ID: %s]\n  Start: %s\n  End:   %s\n  %s",
+        return StringUtils.indent(String.format("[Sprint code: %s | ID: %s]\n  Start date: %s\n  End date:   %s",
                 sprint.getCode(), sprint.getId(), defaultDateFormatter.format(sprint.startDate),
-                defaultDateFormatter.format(sprint.endDate), projectInfo), indent);
+                defaultDateFormatter.format(sprint.endDate)), indent);
     }
 }

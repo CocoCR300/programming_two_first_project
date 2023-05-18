@@ -14,22 +14,28 @@ import java.util.Optional;
 
 public class TaskController extends BaseModelController<Task>
 {
-    private final Option collaboratorIdOption = new ConvertibleArgumentOption<String>("collaborator-id", "c", "",
+    private final Option collaboratorIdOption = new ConvertibleArgumentOption<String>("collaborator-id", "c",
+            "ID of the collaborator to assign the task to.",
+            arg -> ArgsValidator.isNotBlank(arg).map(String::toUpperCase));
+    private final Option descriptionOption = new ConvertibleArgumentOption<String>("description", "d",
+            "Task description.",
             ArgsValidator::isNotBlank);
-    private final Option descriptionOption = new ConvertibleArgumentOption<String>("description", "d", "",
+    private final Option nameOption = new ConvertibleArgumentOption<String>("name", "n",
+            "Task name.",
             ArgsValidator::isNotBlank);
-    private final Option nameOption = new ConvertibleArgumentOption<String>("name", "n", "",
-            ArgsValidator::isNotBlank);
-    private final Option sprintIdOption = new ConvertibleArgumentOption<String>("sprint-id", "s", "",
-            ArgsValidator::isNotBlank);
-    private final Option neededResourcesOption = new ConvertibleArgumentOption<String>("needed-resources", "m", "",
-            ArgsValidator::isCommaSeparatedList);
+    private final Option sprintIdOption = new ConvertibleArgumentOption<String>("sprint-id", "s",
+            "ID of the sprint to add the task to.",
+            arg -> ArgsValidator.isNotBlank(arg).map(String::toUpperCase));
+    private final Option neededResourcesOption = new ConvertibleArgumentOption<String>("needed-resources", "m",
+            "Resources needed for this task. Stored as plain text.",
+            arg -> ArgsValidator.isNotBlank(arg).map(String::toUpperCase));
     private final Command<Map<String, String>> addCommand = new Command<>("add", "", this::add,
             new Option[] { nameOption, descriptionOption, neededResourcesOption },
             new Option[]{ collaboratorIdOption, sprintIdOption });
 
-    private final Option idOption = new ConvertibleArgumentOption<String>("id", "i", "",
-            ArgsValidator::isNotBlank);
+    private final Option idOption = new ConvertibleArgumentOption<String>("id", "i",
+            "Task ID, used when deleting a task, editing its information or searching for them.",
+            arg -> ArgsValidator.isNotBlank(arg).map(String::toUpperCase));
     private final Command<String> deleteCommand = new Command<>("delete", "", this::delete,
             new Option[]{ idOption }, null);
 
@@ -40,9 +46,9 @@ public class TaskController extends BaseModelController<Task>
             null, new Option[] { collaboratorIdOption, idOption, sprintIdOption });
 
     @Inject
-    public TaskController(@NotNull Class<Task> modelClass, @NotNull DataStore dataStore, @NotNull TaskFormatter formatter,
+    public TaskController(@NotNull DataStore dataStore, @NotNull TaskFormatter formatter,
                           @NotNull EntryController entryController, @NotNull TokenResolver tokenResolver) {
-        super(modelClass, dataStore, formatter, entryController, tokenResolver);
+        super(Task.class, dataStore, formatter, entryController, tokenResolver);
         commands.put(addCommand.name, addCommand);
         commands.put(deleteCommand.name, deleteCommand);
         commands.put(editCommand.name, editCommand);
@@ -68,10 +74,7 @@ public class TaskController extends BaseModelController<Task>
                                             i -> "Operation completed successfully.",
                                             e -> "An error occurred. Please contact the developers.");
                                 }));
-                    }, e -> {
-                        // TODO
-                        return "";
-                    });
+                    }, e -> handleFieldMappingError(editCommand, e));
 
             return output;
         }
@@ -146,10 +149,5 @@ public class TaskController extends BaseModelController<Task>
     protected String getExampleCommand(String commandName) {
         // TODO
         return "";
-    }
-
-    @Override
-    public String getCommandInfo(String command) {
-        return null;
     }
 }

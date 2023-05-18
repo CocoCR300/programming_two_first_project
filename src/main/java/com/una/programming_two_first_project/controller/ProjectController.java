@@ -6,39 +6,40 @@ import com.una.programming_two_first_project.formatter.Formatter;
 import com.una.programming_two_first_project.formatter.ProjectFormatter;
 import com.una.programming_two_first_project.formatter.SprintFormatter;
 import com.una.programming_two_first_project.model.*;
-import com.una.programming_two_first_project.util.ArgsValidator;
-import com.una.programming_two_first_project.util.EntityCreator;
-import com.una.programming_two_first_project.util.StringUtils;
-import com.una.programming_two_first_project.util.TokenResolver;
+import com.una.programming_two_first_project.util.*;
 import org.jetbrains.annotations.NotNull;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 public class ProjectController extends BaseModelController<Project>
 {
-    private final Option endDateOption = new ConvertibleArgumentOption<LocalDate>("end-date", "e", "",
+    private final Option endDateOption = new ConvertibleArgumentOption<LocalDate>("end-date", "e",
+            "Project end date.",
             arg -> ArgsValidator.isNotBlank(arg).andThen(ArgsValidator::isDate));
-    private final Option nameOption = new ConvertibleArgumentOption<String>("name", "n", "",
+    private final Option nameOption = new ConvertibleArgumentOption<String>("name", "n",
+            "Project name.",
             ArgsValidator::isNotBlank);
-    private final Option startDateOption = new ConvertibleArgumentOption<LocalDate>("start-date", "s", "",
+    private final Option startDateOption = new ConvertibleArgumentOption<LocalDate>("start-date", "s",
+            "Project start date.",
             arg -> ArgsValidator.isNotBlank(arg).andThen(ArgsValidator::isDate));
-    private final Option sprintIdsOption = new ConvertibleArgumentOption<String>("sprint-ids", "t", "",
-            ArgsValidator::isCommaSeparatedList);
+    private final Option sprintIdsOption = new ConvertibleArgumentOption<String>("sprint-ids", "t",
+            "IDs of the sprints to assign to, add to (using 'add-sprints') or remove from (using 'remove-sprints') the project.",
+            arg -> ArgsValidator.isNotBlank(arg).map(String::toUpperCase));
     private final Command<Map<String, String>> addCommand = new Command<>("add", "", this::add,
             new Option[] { nameOption, startDateOption, endDateOption },
             new Option[] { sprintIdsOption });
 
-    private final Option codeOption = new ConvertibleArgumentOption<String>("code", "c", "",
+    private final Option codeOption = new ConvertibleArgumentOption<String>("code", "c",
+            "Project code, used when deleting a project, editing its information or searching for them.",
             ArgsValidator::isNotBlank);
     private final Command<String> deleteCommand = new Command<>("delete", "", this::delete,
             new Option[]{ codeOption }, null);
 
-    private final Option addSprintsOption = new SwitchOption("add-sprints", "a", "");
-    private final Option removeSprintsOption = new SwitchOption("remove-sprints", "r", "");
+    private final Option addSprintsOption = new SwitchOption("add-sprints", "a",
+            "Add the sprints corresponding to the IDs passed through 'sprint-ids' to this sprint, instead of overwriting its current sprints. Does not require a value.");
+    private final Option removeSprintsOption = new SwitchOption("remove-sprints", "r",
+            "Remove the sprints corresponding to the IDs passed through 'sprint-ids' from this sprint, instead of overwriting its current sprints. Does not require a value.");
     private final Command<Map<String, String>> editCommand = new Command<>("edit", "", this::edit,
             new Option[]{ codeOption },
             new Option[] { nameOption, startDateOption, endDateOption, sprintIdsOption, addSprintsOption, removeSprintsOption });
@@ -73,22 +74,31 @@ public class ProjectController extends BaseModelController<Project>
             List<Project> projectsToChoose = allProjects.values().stream().filter(p -> p != project).toList();
 
             String sprintsInfo = sprintFormatter.formatMany(project.sprints, Formatter.FORMAT_MINIMUM, 4);
-            String projectsInfo = formatter.formatMany(projectsToChoose, Formatter.FORMAT_MINIMUM, 4);
+            String message;
 
-            String confirmation = askForInput(String.format("""
-                        Deleting this project will affect the following sprints:
-                        %s
+            if (projectsToChoose.isEmpty()) {
+                message = "You can type 'Y' to proceed with the deletion, or 'N' to stop this action.\n";
+            } else {
+                String projectsInfo = formatter.formatMany(projectsToChoose, Formatter.FORMAT_MINIMUM, 4);
+                message = String.format("""
                         You can type 'Y' to proceed with the deletion, 'N' to stop this action or provide a new
                         project ID for the affected sprints from the following list:
+                        %s""", projectsInfo);
+            }
+
+            String confirmation = askForInputLoop(String.format("""
+                        Deleting this project will affect the following sprints:
                         %s
-                        Choose an option:\s""", sprintsInfo, projectsInfo));
+                        %s
+                        Choose an option:\s""", sprintsInfo, message),
+                    "Option was invalid or there was no project with the entered ID.\nTry again: ",
+                    arg -> arg.equalsIgnoreCase("Y") || arg.equalsIgnoreCase("N") ||
+                            (allProjects.containsKey(arg.toUpperCase()) && !arg.equalsIgnoreCase(project.getId())));
+
             do {
                 String selectedOptionUppercase = confirmation.toUpperCase();
                 if (selectedOptionUppercase.equals("Y")) {
                     return super.delete(id);
-//                        Result<Integer, Exception> commitResult = dataStore.commitChanges();
-//                        return commitResult.mapOrElse(i -> "Operation completed successfully.",
-//                                e -> "An error occurred. Please contact the developers.");
                 } else if (selectedOptionUppercase.equals("N")) {
                     return "Operation was cancelled.";
                 } else if (allProjects.containsKey(confirmation)) {
@@ -117,10 +127,7 @@ public class ProjectController extends BaseModelController<Project>
 
             Result<Map<String, Object>, String> result = tokenResolver
                     .mapCommandArgsToModelFields(editCommand, Project.class, argsByOptionName, existingInstance)
-                    .mapErr(e -> {
-                        // TODO
-                        return "";
-                    });
+                    .mapErr(e -> handleFieldMappingError(editCommand, e));
             return (String) result.andThen(fieldMappings ->
                     tokenResolver.checkIdListOption(fieldMappings, argsByOptionName, sprintIdsOption, addSprintsOption,
                             removeSprintsOption, existingInstance.sprints).mapErr(e -> {
@@ -174,18 +181,42 @@ public class ProjectController extends BaseModelController<Project>
             return Result.err("Project's start date cannot be after the end date.");
         }
 
-        List<Sprint> projectSprints = (List<Sprint>) fieldMappings.get("sprints");
-        List<Sprint> conflictingSprints = new ArrayList<>();
-        StringBuilder conflictingSprintsInfoBuilder = new StringBuilder();
-        for (Sprint sprint : projectSprints) {
+        String conflictingSprintsInfo;
+        List<Sprint> sprints = (List<Sprint>) fieldMappings.get("sprints");
+        List<Sprint> conflictingSprints = ControllerBoilerplateHelper.checkAlreadyAssignedEntities(sprints, s -> s.project);
+        if (!conflictingSprints.isEmpty()) {
+            conflictingSprintsInfo = sprintFormatter.formatMany(conflictingSprints, Formatter.FORMAT_MINIMUM, 2);
+
+            String confirmation = askForInputLoop(String.format("""
+                                The following sprints are already in a project:
+                                %s
+                                You can type 'Y' to overwrite this information and proceed with the action, or 'N' to stop it.
+                                Choose an option:\s""",
+                            conflictingSprintsInfo),
+                    "Option was invalid.\nTry again: ",
+                    ControllerBoilerplateHelper::validateYesOrNoInput);
+
+            if (confirmation.equals("Y")) {
+                List<Sprint> newSprints = sprints
+                        .stream()
+                        .map(s -> s.project == null ? s : new Sprint(s.id, null, s.number, s.startDate, s.endDate))
+                        .toList();
+                dataStore.updateAll(Sprint.class, newSprints, false);
+                fieldMappings.put("sprints", newSprints);
+            } else {
+                return Result.err("Operation was cancelled.");
+            }
+        }
+
+        conflictingSprints.clear();
+        for (Sprint sprint : sprints) {
             if (sprint.startDate.isBefore(projectStartDate) || sprint.endDate.isAfter(projectEndDate)) {
                 conflictingSprints.add(sprint);
-                conflictingSprintsInfoBuilder.append(sprintFormatter.formatMinimum(sprint, 2));
-                conflictingSprintsInfoBuilder.append('\n');
             }
         }
 
         if (!conflictingSprints.isEmpty()) {
+            conflictingSprintsInfo = sprintFormatter.formatMany(conflictingSprints, Formatter.FORMAT_MINIMUM, 2);
             String confirmation = askForInput(String.format("""
                     The following sprints' start or end dates conflict with the project's start or end date:
                     %s
@@ -195,7 +226,7 @@ public class ProjectController extends BaseModelController<Project>
                     
                     You can type 'Y' to adapt all the sprints' conflicting start and end dates to the project start
                     and end dates to proceed, or 'N' to stop this action
-                    Choose an option:\s""", conflictingSprintsInfoBuilder,
+                    Choose an option:\s""", conflictingSprintsInfo,
                     Formatter.defaultDateFormatter().format(projectStartDate),
                     Formatter.defaultDateFormatter().format(projectEndDate)));
 
@@ -235,10 +266,5 @@ public class ProjectController extends BaseModelController<Project>
     protected String getExampleCommand(String commandName) {
         // TODO
         return "";
-    }
-
-    @Override
-    public String getCommandInfo(String command) {
-        return null;
     }
 }

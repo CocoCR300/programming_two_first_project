@@ -9,7 +9,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-public class Department implements Model {
+public class Department implements Model
+{
     @InverseProperty(relationModelClass = Collaborator.class,
             relationModelRelationFieldName = "department",
             relationModelRelationIdFieldName = "departmentId")

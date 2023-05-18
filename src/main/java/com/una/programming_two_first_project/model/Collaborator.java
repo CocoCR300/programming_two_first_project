@@ -9,8 +9,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-public class Collaborator implements Model {
-
+public class Collaborator implements Model
+{
     public final boolean isActive;
     public final transient Department department;
     @InverseProperty(relationModelClass = Task.class, relationModelRelationIdFieldName = "collaboratorId",
