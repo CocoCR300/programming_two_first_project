@@ -146,7 +146,7 @@ public abstract class BaseModelController<T extends Model> implements ModelContr
             StringBuilder helpBuilder = new StringBuilder(String.format("""
                 %s command
 
-                Usage: management.exe %s [item] [option(s)]
+                Usage: [executable name].exe %s [item] [option(s)]
                 """,
                     tokenName, tokenName));
 

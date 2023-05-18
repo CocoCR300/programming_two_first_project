@@ -50,10 +50,10 @@ public class MainEntryController implements EntryController
         // TODO: Hardcoded version string
         String help = """
                 |--------| Project Management System |--------|
-                 Version: 1.0
-                 Author: Oscar Rojas Alvarado (CocoCR300)
+                  Version: 2023.05
+                  Author: Oscar Rojas Alvarado (CocoCR300)
 
-                Usage: management.exe [command(s)] [item]
+                Usage: [executable name].exe [command(s)] [item]
 
                 Commands:
                 """;
