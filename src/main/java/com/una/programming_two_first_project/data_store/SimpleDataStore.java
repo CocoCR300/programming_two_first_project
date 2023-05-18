@@ -261,18 +261,6 @@ public class SimpleDataStore implements DataStore
         }
 
         return entityMap;
-
-//        try {
-//
-//            CompletableFuture.runAsync(() -> {
-//
-//
-//            }, singleThreadExecutor).unwrap();
-//        } catch (InterruptedException e) {
-//            throw new RuntimeException(e);
-//        } catch (ExecutionException e) {
-//            throw new RuntimeException(e);
-//        }
     }
 
     private <T extends Model> Result<T, String> checkEntityRelations(@NotNull Class<T> modelClass, @Nullable T existingEntity,
