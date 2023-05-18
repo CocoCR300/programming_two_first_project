@@ -27,11 +27,10 @@ public class TaskController extends BaseModelController<Task>
             "ID of the sprint to add the task to.",
             arg -> ArgsValidator.isNotBlank(arg).map(String::toUpperCase));
     private final Option neededResourcesOption = new ConvertibleArgumentOption<String>("needed-resources", "m",
-            "Resources needed for this task. Stored as plain text.",
-            arg -> ArgsValidator.isNotBlank(arg).map(String::toUpperCase));
+            "Resources needed for this task. Stored as plain text.", ArgsValidator::valid);
     private final Command<Map<String, String>> addCommand = new Command<>("add", "", this::add,
-            new Option[] { nameOption, descriptionOption, neededResourcesOption },
-            new Option[]{ collaboratorIdOption, sprintIdOption });
+            new Option[] { nameOption, descriptionOption },
+            new Option[]{ neededResourcesOption, collaboratorIdOption, sprintIdOption });
 
     private final Option idOption = new ConvertibleArgumentOption<String>("id", "i",
             "Task ID, used when deleting a task, editing its information or searching for them.",

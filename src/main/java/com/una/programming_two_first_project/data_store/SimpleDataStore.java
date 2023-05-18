@@ -37,7 +37,6 @@ public class SimpleDataStore implements DataStore
 //    private final Map<String, Sprint> sprints;
 //    private final Map<String, Task> tasks;
     private final Map<String, ModelInfo<? extends Model>> modelInfoByKey;
-    private final Map<String, Map<String,? extends Model>> entitiesByName;
     private final String applicationDataFolderPath;
 
     @Inject
@@ -50,12 +49,10 @@ public class SimpleDataStore implements DataStore
 //        sprints = new HashMap<>();
 //        tasks = new HashMap<>();
         // The map returned by Map.of() is unmodifiable, so we have to create a new map to be able to work on it
-        entitiesByName = new HashMap<>();
         modelInfoByKey = new HashMap<>();
 
         for (Class<? extends Model> modelClass : new Class[] { Collaborator.class, Department.class, Project.class, Sprint.class, Task.class }) {
             String modelKey = getModelKey(modelClass);
-            entitiesByName.put(modelKey, null);
 
             Field primaryKeyField = null;
             List<Field> foreignKeyFields = new ArrayList<>();
@@ -80,10 +77,6 @@ public class SimpleDataStore implements DataStore
 
         singleThreadExecutor = Executors.newSingleThreadExecutor();
     }
-
-//    private boolean areEntitiesLoaded(String modelKey) {
-//        return entitiesByName.unwrap(modelKey).isPresent();
-//    }
 
     private boolean changesMadeTo(String modelKey) {
         return modelInfoByKey.get(modelKey).changeCounter > 0;
@@ -111,11 +104,11 @@ public class SimpleDataStore implements DataStore
     }
 
     private <T extends Model> Result<Map<String, T>, String> getAll(String modelKey) {
-        if (!entitiesByName.containsKey(modelKey)) {
+        if (!modelInfoByKey.containsKey(modelKey)) {
             return Result.err(DataStore.MODEL_NOT_FOUND);
         }
 
-        Map<String, T> map = (Map<String, T>) entitiesByName.get(modelKey);
+        Map<String, T> map = (Map<String, T>) modelInfoByKey.get(modelKey).entities;
         if (map == null) {
             map = loadEntities(modelKey);
         }
@@ -128,8 +121,9 @@ public class SimpleDataStore implements DataStore
 
     private <T extends Model> Map<String, T> loadEntities(String modelKey) {
         Gson gson = createGson();
+        ModelInfo<T> modelInfo = (ModelInfo<T>) modelInfoByKey.get(modelKey);
         Map<String, T> entityMap = new HashMap<>();
-        entitiesByName.put(modelKey, entityMap);
+        modelInfo.entities = entityMap;
 
         File entitiesFile = getModelFile(modelKey);
         if (!entitiesFile.exists()) {
@@ -402,7 +396,7 @@ public class SimpleDataStore implements DataStore
                 if (primaryKeyField.getType().equals(String.class)) {
                     primaryKeyField.set(newEntity, UUID.randomUUID().toString().toUpperCase());
                 } else {
-                    Collection<T> entities = (Collection<T>) entitiesByName.get(modelKey).values();
+                    Collection<T> entities = (Collection<T>) modelInfoByKey.get(modelKey).entities.values();
                     Number highestPrimaryKey = 0;
                     for (T entity : entities) {
                         Number currentPrimaryKey = (Number) primaryKeyField.get(entity);
@@ -610,9 +604,9 @@ public class SimpleDataStore implements DataStore
     public Result<Integer, Exception> commitChanges() {
         Gson gson = createGson();
 
-        for (Map.Entry<String, Map<String, ? extends Model>> entry : entitiesByName.entrySet()) {
+        for (Map.Entry<String, ModelInfo<? extends Model>> entry : modelInfoByKey.entrySet()) {
             if (entry.getValue() != null && changesMadeTo(entry.getKey())) {
-                Map<String, ? extends Model> map = entry.getValue();
+                Map<String, ? extends Model> map = entry.getValue().entities;
                 String modelKey = entry.getKey();
                 Object[] entities = map.values().toArray();
                 File entitiesFile = getModelFile(modelKey);
@@ -650,6 +644,7 @@ public class SimpleDataStore implements DataStore
         public final List<Field> foreignKeyFields;
         public final List<Field> inversePropertyFields;
         public int changeCounter;
+        public Map<String, T> entities;
 
         public ModelInfo(Class<T> modelClass, Field primaryKeyField, List<Field> foreignKeyFields, List<Field> inversePropertyFields) {
             this.modelClass = modelClass;
@@ -657,5 +652,7 @@ public class SimpleDataStore implements DataStore
             this.foreignKeyFields = foreignKeyFields;
             this.inversePropertyFields = inversePropertyFields;
         }
+
+        public boolean initialized() { return entities != null;}
     }
 }

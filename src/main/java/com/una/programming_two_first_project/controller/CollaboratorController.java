@@ -54,8 +54,8 @@ public class CollaboratorController extends BaseModelController<Collaborator>
             "Remove the tasks corresponding to the IDs passed through 'task-ids' from the collaborator's tasks, instead of overwriting their current tasks. Does not require a value.");
     private final Command<Map<String, String>> editCommand = new Command<>("edit", "", this::edit,
             new Option[]{ idOption },
-            new Option[] { nameOption, lastNameOption, telephoneNumberOption, emailAddressOption, departmentIdOption, isActiveOption,
-                    isInactiveOption, taskIdsOption, addTasksOption, removeTasksOption });
+            new Option[] { nameOption, lastNameOption, telephoneNumberOption, emailAddressOption, departmentIdOption,
+                    isActiveOption, isInactiveOption, taskIdsOption, addTasksOption, removeTasksOption });
     private final Command<Map<String, String>> searchCommand = new Command<>("search", "", this::search,
             null, new Option[] { departmentIdOption, idOption });
 
@@ -128,30 +128,48 @@ public class CollaboratorController extends BaseModelController<Collaborator>
     @Override
     protected Result<Map<String, Object>, String> verifyFieldMappings(Map<String, Object> fieldMappings) {
         List<Task> tasks = (List<Task>) fieldMappings.get("tasks");
-        List<Task> conflictingTasks = ControllerBoilerplateHelper.checkAlreadyAssignedEntities(tasks, t -> t.collaborator);
 
-        if (!conflictingTasks.isEmpty()) {
-            String conflictingTasksInfo =
-                    taskFormatter.formatMany(conflictingTasks, Formatter.FORMAT_MINIMUM, 2);
+        if (!tasks.isEmpty()) {
+            if (!((boolean) fieldMappings.get("isActive"))) {
+                String confirmation = askForInputLoop("""
+                                You cannot assign tasks to an inactive collaborator.
+                                You can type 'Y' to mark the collaborator as active and proceed with the action, or 'N' to stop it.
+                                Choose an option:\s""",
+                        "Option was invalid.\nTry again: ",
+                        ControllerBoilerplateHelper::validateYesOrNoInput);
 
-            String confirmation = askForInputLoop(String.format("""
+                if (confirmation.equalsIgnoreCase("Y")) {
+                    fieldMappings.replace("isActive", true);
+                } else {
+                    return Result.err("Operation was cancelled.");
+                }
+            }
+
+            List<Task> conflictingTasks = ControllerBoilerplateHelper.checkAlreadyAssignedEntities(tasks, t -> t.collaborator);
+
+            if (!conflictingTasks.isEmpty()) {
+                String conflictingTasksInfo =
+                        taskFormatter.formatMany(conflictingTasks, Formatter.FORMAT_MINIMUM, 2);
+
+                String confirmation = askForInputLoop(String.format("""
                                 The following tasks are already assigned to a collaborator:
                                 %s
                                 You can type 'Y' to overwrite this information and proceed with the action, or 'N' to stop it.
                                 Choose an option:\s""",
-                            conflictingTasksInfo),
-                    "Option was invalid.\nTry again: ",
-                    ControllerBoilerplateHelper::validateYesOrNoInput);
+                                conflictingTasksInfo),
+                        "Option was invalid.\nTry again: ",
+                        ControllerBoilerplateHelper::validateYesOrNoInput);
 
-            if (confirmation.equals("Y")) {
-                List<Task> newTasks = tasks
-                        .stream()
-                        .map(t -> t.collaborator == null ? t : new Task(t.id, t.name, t.description, null, t.sprint, t.neededResources))
-                        .toList();
-                dataStore.updateAll(Task.class, newTasks, false);
-                fieldMappings.put("tasks", newTasks);
-            } else {
-                return Result.err("Operation was cancelled.");
+                if (confirmation.equals("Y")) {
+                    List<Task> newTasks = tasks
+                            .stream()
+                            .map(t -> t.collaborator == null ? t : new Task(t.id, t.name, t.description, null, t.sprint, t.neededResources))
+                            .toList();
+                    dataStore.updateAll(Task.class, newTasks, false);
+                    fieldMappings.put("tasks", newTasks);
+                } else {
+                    return Result.err("Operation was cancelled.");
+                }
             }
         }
 

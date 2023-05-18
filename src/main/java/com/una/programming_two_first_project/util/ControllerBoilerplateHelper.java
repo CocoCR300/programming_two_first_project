@@ -10,7 +10,7 @@ public class ControllerBoilerplateHelper
 {
     public static boolean validateYesOrNoInput(String input) {
         String inputUppercase = input.toUpperCase();
-        return inputUppercase.equals("Y") || inputUppercase.equals("N");
+        return inputUppercase.equalsIgnoreCase("Y") || inputUppercase.equalsIgnoreCase("N");
     }
 
     public static <T extends Model> List<T> checkAlreadyAssignedEntities(List<T> entities,
